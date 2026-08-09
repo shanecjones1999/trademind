@@ -29,6 +29,7 @@ func main() {
 
 	quotes := market.NewMassiveClient(cfg.MassiveAPIKey)
 	var accounts paper.AccountRepository
+	var tickers market.TickerProvider
 	if cfg.DatabaseURL != "" {
 		store, err := paper.OpenPostgresStore(context.Background(), cfg.DatabaseURL)
 		if err != nil {
@@ -38,11 +39,21 @@ func main() {
 		defer store.Close()
 		accounts = store
 		logger.Info("paper-account persistence enabled")
+
+		catalog, err := market.OpenPostgresTickerCatalog(context.Background(), cfg.DatabaseURL)
+		if err != nil {
+			logger.Error("initialize ticker catalog", "error", err)
+			os.Exit(1)
+		}
+		defer catalog.Close()
+		tickers = catalog
+		logger.Info("local ticker catalog enabled")
 	} else {
 		logger.Warn("paper-account persistence disabled: set DATABASE_URL to provision paper accounts")
+		logger.Warn("local ticker catalog disabled: set DATABASE_URL and run ticker-sync before ticker search is available")
 	}
 
-	apiOptions := []httpapi.Option{httpapi.WithTickerProvider(quotes)}
+	apiOptions := []httpapi.Option{httpapi.WithTickerProvider(tickers)}
 	if cfg.GoogleAuthEnabled() {
 		sessions, err := identity.NewSessionManager(cfg.AuthSessionSecret)
 		if err != nil {

@@ -8,7 +8,10 @@ Create a paper-trading platform with a Go backend, a Next.js web app, and React 
 
 - Account creation and onboarding with a virtual balance, such as $100,000 USD.
 - Watchlists, symbol search, quotes, charts, buy and sell flows, holdings, transaction history, and portfolio performance.
-- Start with US equities; add ETFs and crypto later.
+- Start with US-listed common stocks and ETFs. Initial primary exchanges are
+  NASDAQ, NYSE, NYSE American, NYSE Arca, and Cboe US equities exchanges; add
+  OTC, foreign primary listings, crypto, options, warrants, and other
+  instruments later.
 - Support market and limit orders. Execute market orders using the latest eligible quote and keep limit orders open until the price crosses the limit.
 - Clearly label all screens as simulated or paper trading and display quote freshness or delay.
 
@@ -26,6 +29,10 @@ Create a paper-trading platform with a Go backend, a Next.js web app, and React 
 - Use Massive as the stock-market data provider. Confirm its selected plan covers US equities, real-time data, and redistribution to web and mobile users.
 - Use Massive's free previous-day aggregate endpoint for early development only; it provides end-of-day data and must be replaced before real-time trading is offered.
 - Build the Massive integration behind a provider abstraction so a future vendor change does not affect trading logic.
+- Maintain a separate local instrument catalog for symbol discovery and
+  validation. Sync the defined US common-stock and ETF universe from Massive's
+  reference-tickers API daily; do not call the provider in the user search
+  path. Quotes and historical prices remain provider-sourced data.
 - Connect to Massive's server-side streaming API, cache normalized quotes, then distribute only entitled data to clients.
 - Handle market schedules, halts, stale quotes, splits, dividends, and provider outages.
 - Do not describe quotes as real time if the selected vendor plan provides delayed data.
@@ -75,6 +82,28 @@ Main API areas:
 
 Maintain auditable order and ledger history. Derive balances from ledger entries rather than overwriting balances ad hoc.
 
+### Instrument catalog implementation
+
+1. Add an embedded PostgreSQL migration for `instruments` and `instrument_sync_runs`.
+   `instruments` must include normalized symbol, name, asset type,
+   primary-exchange MIC, active status, provider identifiers, provider update
+   time, first/last seen times, and delisting time. Preserve inactive records;
+   provider stable identifiers distinguish renamed or reused ticker symbols.
+2. Add a catalog repository that supports transactional page upserts, exact
+   active-symbol lookup, and indexed active symbol/name search. Make the ticker
+   API and new watchlist/order validation use it.
+3. Run a server-side bootstrap command, then a daily scheduled full refresh.
+   Fetch the allowed exchange/type scopes from Massive, consume all
+   pagination cursors, and record a sync run as complete only after every
+   scope succeeds.
+4. After a complete scope refresh, deactivate catalog listings not seen in
+   that scope or explicitly reported as delisted. Do not delete rows or
+   deactivate records following a partial or failed refresh.
+5. Test filtering, pagination, normalization, upserts, local endpoint
+   behavior, delisting, and recovery from failed runs. Monitor row counts,
+   page counts, inserted/updated/deactivated records, duration, and provider
+   errors.
+
 ## 7. Address security and compliance
 
 - Authenticate users with Google OAuth through OpenID Connect. Use PKCE for web and native sign-in flows, verify Google ID tokens server-side, then create or link the user account and issue secure app sessions.
@@ -105,6 +134,9 @@ Maintain auditable order and ledger history. Derive balances from ledger entries
 ### Phase 2: Market data and web portfolio
 
 - [x] Development quote ingestion through Massive's previous-day aggregate endpoint
+- [ ] Local US instrument catalog migration, repository, and ticker-search cutover
+- [ ] Bootstrap and daily Massive reference-data synchronization for NASDAQ,
+  NYSE, NYSE American, NYSE Arca, and Cboe-listed common stocks and ETFs
 - [ ] Licensed real-time quote ingestion, caching, and freshness handling
 - [~] Exact-symbol lookup through development quote API
 - [~] Web paper-account overview with virtual cash, portfolio-value placeholder, account status, market snapshot, and sign-out
