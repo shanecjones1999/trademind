@@ -1,0 +1,184 @@
+.page {
+  min-height: 100vh;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 32px 40px;
+}
+
+.nav {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.brand {
+  color: #12251f;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.signIn {
+  border: 1px solid #c8d7ce;
+  border-radius: 999px;
+  color: #12251f;
+  font-size: 0.9rem;
+  font-weight: 650;
+  padding: 10px 16px;
+}
+
+.hero {
+  max-width: 760px;
+  padding: 120px 0 96px;
+}
+
+.eyebrow {
+  color: #37775d;
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  color: #12251f;
+  font-size: clamp(2.8rem, 7vw, 5.7rem);
+  letter-spacing: -0.075em;
+  line-height: 0.97;
+  margin: 16px 0 24px;
+}
+
+.description {
+  color: #52635b;
+  font-size: 1.2rem;
+  line-height: 1.55;
+  max-width: 600px;
+}
+
+.primaryAction {
+  background: #12251f;
+  border-radius: 999px;
+  color: #fffdf8;
+  display: inline-block;
+  font-weight: 700;
+  margin-top: 32px;
+  padding: 14px 22px;
+}
+
+.quoteSection {
+  align-items: end;
+  border-top: 1px solid #dce7df;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 52px 0;
+}
+
+.quoteSection h2,
+.features h2 {
+  color: #12251f;
+  font-size: 1.55rem;
+  letter-spacing: -0.045em;
+  margin-top: 10px;
+}
+
+.quoteCard {
+  background: #e6f1e9;
+  border-radius: 18px;
+  min-width: min(100%, 330px);
+  padding: 24px;
+}
+
+.quoteHeader {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.quoteHeader strong {
+  color: #12251f;
+  font-size: 1.1rem;
+}
+
+.quoteHeader span,
+.quoteMeta {
+  color: #5d7468;
+  font-size: 0.78rem;
+}
+
+.price {
+  color: #12251f;
+  font-size: 2rem;
+  font-weight: 750;
+  letter-spacing: -0.05em;
+  margin: 20px 0 3px;
+}
+
+.positiveChange,
+.negativeChange {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.positiveChange {
+  color: #17734c;
+}
+
+.negativeChange {
+  color: #bd3745;
+}
+
+.quoteMeta {
+  line-height: 1.4;
+  margin-top: 18px;
+}
+
+.unavailable {
+  color: #12251f;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.features {
+  border-top: 1px solid #dce7df;
+  display: grid;
+  gap: 32px;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 50px 0;
+}
+
+.features p {
+  color: #52635b;
+  line-height: 1.5;
+  margin-top: 12px;
+}
+
+.disclosure {
+  border-top: 1px solid #dce7df;
+  color: #75867d;
+  font-size: 0.78rem;
+  padding-top: 24px;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 20px 20px 32px;
+  }
+
+  .hero {
+    padding: 88px 0 72px;
+  }
+
+  .quoteSection {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .quoteCard {
+    width: 100%;
+  }
+
+  .features {
+    grid-template-columns: 1fr;
+  }
+}

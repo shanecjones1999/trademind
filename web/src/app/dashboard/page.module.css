@@ -1,0 +1,280 @@
+.page {
+  background: #fffdf8;
+  min-height: 100vh;
+  padding: 24px 32px;
+}
+
+.nav {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 960px;
+}
+
+.accountMenu {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.brand {
+  color: #12251f;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.email {
+  color: #5d7468;
+  font-size: 0.85rem;
+}
+
+.signOut {
+  background: transparent;
+  border: 0;
+  color: #37775d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0;
+}
+
+.signOut:disabled {
+  color: #75867d;
+  cursor: progress;
+}
+
+.intro {
+  max-width: 720px;
+  padding: 104px 0 52px;
+}
+
+.eyebrow {
+  color: #37775d;
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.intro h1 {
+  color: #12251f;
+  font-size: clamp(2.6rem, 6vw, 4.8rem);
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+  margin: 14px 0 22px;
+}
+
+.description {
+  color: #52635b;
+  font-size: 1.1rem;
+  line-height: 1.55;
+  max-width: 520px;
+}
+
+.error {
+  color: #a42b36;
+  font-size: 0.9rem;
+  margin: -24px 0 24px;
+}
+
+.balanceGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1.4fr 1fr 1fr;
+}
+
+.primaryBalance,
+.balanceCard,
+.marketCard,
+.nextStep,
+.accountUnavailable {
+  border-radius: 20px;
+  padding: 28px;
+}
+
+.primaryBalance {
+  background: #12251f;
+  color: #fffdf8;
+}
+
+.primaryBalance p,
+.balanceCard p {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.primaryBalance strong,
+.balanceCard strong {
+  display: block;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  letter-spacing: -0.06em;
+  line-height: 1;
+  margin: 32px 0 9px;
+}
+
+.primaryBalance span,
+.balanceCard span {
+  color: #aac1b4;
+  font-size: 0.83rem;
+}
+
+.balanceCard {
+  background: #e6f1e9;
+  color: #12251f;
+}
+
+.balanceCard span {
+  color: #5d7468;
+}
+
+.accountUnavailable {
+  background: #f8eee7;
+  color: #12251f;
+}
+
+.accountUnavailable h2,
+.marketCard h2,
+.nextStep h2 {
+  font-size: 1.55rem;
+  letter-spacing: -0.045em;
+  margin-top: 10px;
+}
+
+.accountUnavailable p:last-child,
+.nextStep > p:not(.eyebrow) {
+  color: #52635b;
+  line-height: 1.5;
+  margin-top: 12px;
+  max-width: 520px;
+}
+
+.workspace {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1.4fr 1fr;
+  margin-top: 16px;
+}
+
+.marketCard {
+  background: #f1f5f1;
+}
+
+.cardHeading {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.textLink {
+  color: #37775d;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.quote {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 44px;
+}
+
+.symbol {
+  color: #5d7468;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.quote strong {
+  color: #12251f;
+  display: block;
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  letter-spacing: -0.06em;
+  margin-top: 5px;
+}
+
+.positiveChange,
+.negativeChange {
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+
+.positiveChange {
+  color: #17734c;
+}
+
+.negativeChange {
+  color: #bd3745;
+}
+
+.muted {
+  color: #5d7468;
+  line-height: 1.5;
+  margin-top: 44px;
+}
+
+.nextStep {
+  background: #e6f1e9;
+}
+
+.primaryAction {
+  background: #12251f;
+  border-radius: 999px;
+  color: #fffdf8;
+  display: inline-block;
+  font-weight: 700;
+  margin-top: 28px;
+  padding: 14px 22px;
+}
+
+.loading {
+  color: #5d7468;
+  margin: 140px auto;
+  max-width: 960px;
+}
+
+.disclosure {
+  border-top: 1px solid #dce7df;
+  color: #75867d;
+  font-size: 0.78rem;
+  margin-top: 56px;
+  padding: 24px 0;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 20px;
+  }
+
+  .nav {
+    gap: 12px;
+  }
+
+  .accountMenu {
+    gap: 12px;
+  }
+
+  .intro {
+    padding: 72px 0 40px;
+  }
+
+  .balanceGrid,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .primaryBalance strong,
+  .balanceCard strong {
+    margin-top: 22px;
+  }
+
+  .quote {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 32px;
+  }
+}

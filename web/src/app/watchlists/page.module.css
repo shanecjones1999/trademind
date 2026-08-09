@@ -1,0 +1,205 @@
+.page {
+  background: #fffdf8;
+  color: #12251f;
+  min-height: 100vh;
+  padding: 24px 32px;
+}
+
+.nav {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 960px;
+}
+
+.brand {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.dashboardLink {
+  border: 1px solid #c8d7ce;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 650;
+  padding: 10px 16px;
+}
+
+.intro {
+  margin: 100px auto 34px;
+  max-width: 960px;
+}
+
+.eyebrow {
+  color: #37775d;
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.intro h1,
+.emptyState h1 {
+  font-size: clamp(2.6rem, 6vw, 4.8rem);
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+  margin: 14px 0 20px;
+}
+
+.intro > p:last-child,
+.emptyState p {
+  color: #52635b;
+  font-size: 1.08rem;
+  line-height: 1.55;
+  max-width: 560px;
+}
+
+.createForm,
+.symbolForm {
+  display: flex;
+  gap: 10px;
+}
+
+.createForm {
+  margin: 0 auto;
+  max-width: 960px;
+}
+
+.createForm input,
+.symbolForm input {
+  background: #fffdf8;
+  border: 1px solid #c8d7ce;
+  border-radius: 10px;
+  color: #12251f;
+  font: inherit;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.createForm input {
+  flex: 1;
+  max-width: 380px;
+}
+
+.createForm button,
+.symbolForm button,
+.primaryAction {
+  background: #12251f;
+  border: 0;
+  border-radius: 999px;
+  color: #fffdf8;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 12px 18px;
+}
+
+.error {
+  color: #a42b36;
+  margin: 14px auto 0;
+  max-width: 960px;
+}
+
+.watchlistGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 36px auto 0;
+  max-width: 960px;
+}
+
+.watchlist,
+.emptyState {
+  background: #e6f1e9;
+  border-radius: 20px;
+  padding: 28px;
+}
+
+.watchlist h2,
+.emptyState h2 {
+  font-size: 1.45rem;
+  letter-spacing: -0.045em;
+}
+
+.symbolList {
+  list-style: none;
+  margin: 24px 0;
+}
+
+.symbolList li {
+  align-items: center;
+  border-top: 1px solid #c8d7ce;
+  display: flex;
+  font-weight: 750;
+  justify-content: space-between;
+  letter-spacing: 0.04em;
+  padding: 11px 0;
+}
+
+.symbolList li:last-child {
+  border-bottom: 1px solid #c8d7ce;
+}
+
+.symbolList button {
+  background: transparent;
+  border: 0;
+  color: #37775d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.emptySymbols {
+  color: #5d7468;
+  margin: 24px 0;
+}
+
+.symbolForm input {
+  flex: 1;
+  text-transform: uppercase;
+}
+
+.emptyState {
+  margin: 36px auto 0;
+  max-width: 960px;
+}
+
+.primaryAction {
+  display: inline-block;
+  margin-top: 26px;
+}
+
+.disclosure {
+  border-top: 1px solid #dce7df;
+  color: #75867d;
+  font-size: 0.78rem;
+  margin: 56px auto 0;
+  max-width: 960px;
+  padding: 24px 0;
+}
+
+.srOnly {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 20px;
+  }
+
+  .intro {
+    margin-top: 72px;
+  }
+
+  .watchlistGrid {
+    grid-template-columns: 1fr;
+  }
+}
