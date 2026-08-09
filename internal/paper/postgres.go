@@ -21,6 +21,12 @@ var initialSchema string
 //go:embed migrations/0002_watchlists.sql
 var watchlistSchema string
 
+//go:embed migrations/0003_paper_positions.sql
+var positionSchema string
+
+//go:embed migrations/0004_paper_position_lots.sql
+var positionLotSchema string
+
 type PostgresStore struct {
 	pool  *pgxpool.Pool
 	now   func() time.Time
@@ -47,6 +53,14 @@ func OpenPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore,
 	if _, err := pool.Exec(ctx, watchlistSchema); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("apply watchlist schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, positionSchema); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("apply paper-position schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, positionLotSchema); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("apply paper-position-lot schema: %w", err)
 	}
 
 	return &PostgresStore{
@@ -161,6 +175,11 @@ func (s *PostgresStore) Snapshot(ctx context.Context, userID string) (AccountSna
 	}
 	snapshot.Account.OpenedAt = snapshot.Account.OpenedAt.UTC()
 	snapshot.CashBalanceCents = Money(balance)
+	positions, err := s.positionsByAccountID(ctx, snapshot.Account.ID)
+	if err != nil {
+		return AccountSnapshot{}, err
+	}
+	snapshot.Positions = positions
 	return snapshot, nil
 }
 
@@ -180,6 +199,36 @@ func (s *PostgresStore) PostTransaction(ctx context.Context, transaction Transac
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit ledger transaction: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) ApplyOrderFill(ctx context.Context, fill OrderFill) error {
+	if err := validateOrderFill(fill); err != nil {
+		return err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin order-fill transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := insertTransaction(ctx, tx, fill.CashTransaction); err != nil {
+		return err
+	}
+
+	if fill.Order.Side == OrderSideBuy {
+		if err := applyBuyOrderFill(ctx, tx, fill); err != nil {
+			return err
+		}
+	} else {
+		if err := applySellOrderFill(ctx, tx, fill); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit order fill: %w", err)
 	}
 	return nil
 }
@@ -348,6 +397,222 @@ func queryAccount(ctx context.Context, tx pgx.Tx, userID string) (PaperAccount, 
 	).Scan(&account.ID, &account.UserID, &account.OpenedAt)
 	account.OpenedAt = account.OpenedAt.UTC()
 	return account, err
+}
+
+func (s *PostgresStore) positionsByAccountID(ctx context.Context, accountID string) ([]Position, error) {
+	rows, err := s.pool.Query(
+		ctx,
+		`SELECT symbol, quantity, cost_basis_cents, realized_pnl_cents
+		 FROM paper_positions
+		 WHERE account_id = $1
+		 ORDER BY symbol ASC`,
+		accountID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list paper positions: %w", err)
+	}
+	defer rows.Close()
+
+	positions := make([]Position, 0)
+	for rows.Next() {
+		var position Position
+		var costBasis int64
+		var realizedPnL int64
+		if err := rows.Scan(
+			&position.Symbol,
+			&position.Quantity,
+			&costBasis,
+			&realizedPnL,
+		); err != nil {
+			return nil, fmt.Errorf("scan paper position: %w", err)
+		}
+		position.CostBasisCents = Money(costBasis)
+		position.RealizedPnLCents = Money(realizedPnL)
+		positions = append(positions, position)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate paper positions: %w", err)
+	}
+	return positions, nil
+}
+
+func applyBuyOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
+	costBasis, err := multipliedMoney(fill.Execution.PriceCents, fill.Execution.Quantity)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		ctx,
+		`INSERT INTO paper_positions (account_id, symbol, quantity, cost_basis_cents, realized_pnl_cents)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (account_id, symbol) DO UPDATE
+		 SET quantity = paper_positions.quantity + EXCLUDED.quantity,
+		     cost_basis_cents = paper_positions.cost_basis_cents + EXCLUDED.cost_basis_cents`,
+		fill.Order.AccountID,
+		fill.Order.Symbol,
+		fill.Execution.Quantity,
+		int64(costBasis),
+		int64(0),
+	); err != nil {
+		return fmt.Errorf("upsert paper position: %w", err)
+	}
+	if _, err := tx.Exec(
+		ctx,
+		`INSERT INTO paper_position_lots (account_id, symbol, quantity, cost_per_share_cents, acquired_at)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		fill.Order.AccountID,
+		fill.Order.Symbol,
+		fill.Execution.Quantity,
+		int64(fill.Execution.PriceCents),
+		fill.Execution.OccurredAt.UTC(),
+	); err != nil {
+		return fmt.Errorf("insert paper position lot: %w", err)
+	}
+	return nil
+}
+
+func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
+	lotRows, err := tx.Query(
+		ctx,
+		`SELECT id, quantity, cost_per_share_cents
+		 FROM paper_position_lots
+		 WHERE account_id = $1 AND symbol = $2
+		 ORDER BY acquired_at ASC, id ASC
+		 FOR UPDATE`,
+		fill.Order.AccountID,
+		fill.Order.Symbol,
+	)
+	if err != nil {
+		return fmt.Errorf("load paper position lots: %w", err)
+	}
+	defer lotRows.Close()
+
+	type storedLot struct {
+		id           int64
+		quantity     int64
+		costPerShare Money
+	}
+
+	lots := make([]storedLot, 0)
+	for lotRows.Next() {
+		var lot storedLot
+		var costPerShare int64
+		if err := lotRows.Scan(&lot.id, &lot.quantity, &costPerShare); err != nil {
+			return fmt.Errorf("scan paper position lot: %w", err)
+		}
+		lot.costPerShare = Money(costPerShare)
+		lots = append(lots, lot)
+	}
+	if err := lotRows.Err(); err != nil {
+		return fmt.Errorf("iterate paper position lots: %w", err)
+	}
+
+	remainingToSell := fill.Execution.Quantity
+	consumedCost := Money(0)
+	for index := range lots {
+		consumed := min(lots[index].quantity, remainingToSell)
+		if consumed == 0 {
+			continue
+		}
+		consumedLotCost, err := multipliedMoney(lots[index].costPerShare, consumed)
+		if err != nil {
+			return err
+		}
+		consumedCost += consumedLotCost
+		lots[index].quantity -= consumed
+		remainingToSell -= consumed
+	}
+	if remainingToSell != 0 {
+		return ErrInsufficientPosition
+	}
+	proceeds, err := multipliedMoney(fill.Execution.PriceCents, fill.Execution.Quantity)
+	if err != nil {
+		return err
+	}
+	realizedPnL := proceeds - consumedCost
+	remainingQuantity := int64(0)
+	remainingCostBasis := Money(0)
+	for _, lot := range lots {
+		if lot.quantity == 0 {
+			continue
+		}
+		remainingQuantity += lot.quantity
+		lotCost, err := multipliedMoney(lot.costPerShare, lot.quantity)
+		if err != nil {
+			return err
+		}
+		remainingCostBasis += lotCost
+	}
+
+	var currentRealizedPnL int64
+	err = tx.QueryRow(
+		ctx,
+		`SELECT realized_pnl_cents
+		 FROM paper_positions
+		 WHERE account_id = $1 AND symbol = $2
+		 FOR UPDATE`,
+		fill.Order.AccountID,
+		fill.Order.Symbol,
+	).Scan(&currentRealizedPnL)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrInsufficientPosition
+	}
+	if err != nil {
+		return fmt.Errorf("load paper position summary: %w", err)
+	}
+	nextRealizedPnL := Money(currentRealizedPnL) + realizedPnL
+
+	if remainingQuantity == 0 {
+		if _, err := tx.Exec(
+			ctx,
+			`DELETE FROM paper_positions WHERE account_id = $1 AND symbol = $2`,
+			fill.Order.AccountID,
+			fill.Order.Symbol,
+		); err != nil {
+			return fmt.Errorf("delete closed paper position: %w", err)
+		}
+	} else {
+		if _, err := tx.Exec(
+			ctx,
+			`UPDATE paper_positions
+			 SET quantity = $3,
+			     cost_basis_cents = $4,
+			     realized_pnl_cents = $5
+			 WHERE account_id = $1 AND symbol = $2`,
+			fill.Order.AccountID,
+			fill.Order.Symbol,
+			remainingQuantity,
+			int64(remainingCostBasis),
+			int64(nextRealizedPnL),
+		); err != nil {
+			return fmt.Errorf("update paper position: %w", err)
+		}
+	}
+
+	for _, lot := range lots {
+		if lot.quantity > 0 {
+			if _, err := tx.Exec(
+				ctx,
+				`UPDATE paper_position_lots
+				 SET quantity = $2
+				 WHERE id = $1`,
+				lot.id,
+				lot.quantity,
+			); err != nil {
+				return fmt.Errorf("update paper position lot: %w", err)
+			}
+			continue
+		}
+		if _, err := tx.Exec(
+			ctx,
+			`DELETE FROM paper_position_lots WHERE id = $1`,
+			lot.id,
+		); err != nil {
+			return fmt.Errorf("delete paper position lot: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func insertTransaction(ctx context.Context, tx pgx.Tx, transaction Transaction) error {

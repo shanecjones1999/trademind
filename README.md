@@ -74,6 +74,14 @@ curl http://localhost:8080/healthz
 curl http://localhost:8080/api/v1/quotes/AAPL
 curl "http://localhost:8080/api/v1/quotes?symbols=AAPL,MSFT,NVDA"
 curl "http://localhost:8080/api/v1/tickers?search=apple&limit=12"
+curl --cookie "trademind_session=..." \
+  --header "Content-Type: application/json" \
+  --data '{"side":"buy","symbol":"AAPL","quantity":2}' \
+  http://localhost:8080/api/v1/orders
+curl --cookie "trademind_session=..." \
+  --header "Content-Type: application/json" \
+  --data '{"side":"sell","symbol":"AAPL","quantity":1}' \
+  http://localhost:8080/api/v1/orders
 ```
 
 `GET /api/v1/quotes/{symbol}` requests Massive's free-tier previous-day bar
@@ -96,7 +104,7 @@ plan.
 When `DATABASE_URL` is set, the API applies its initial paper-account schema on
 startup. A successful Google sign-in then creates one paper account with
 $100,000.00 in virtual cash. Signed-in users can retrieve that account with
-`GET /api/v1/account`.
+`GET /api/v1/account`, including any open paper positions.
 
 ## Instrument catalog synchronization
 
@@ -174,9 +182,11 @@ eligibility, and verifies buying power or available shares before producing a
 balanced cash-ledger transaction. Completed orders are applied to FIFO position
 lots, preserving cost basis and realized P&L at cent precision.
 
-This is not exposed as a trading endpoint yet: the current Massive integration
-is previous-day data and is not eligible to execute simulated orders. A
-licensed, fresh bid/ask feed is required before wiring these rules to the API.
+`POST /api/v1/orders` now accepts authenticated market buy and sell orders with
+an order side, stock symbol, and whole-share quantity. In development, orders
+execute against the latest delayed quote returned by the configured
+market-data provider, using the quote price when bid and ask data are
+unavailable.
 
 ## Configuration
 

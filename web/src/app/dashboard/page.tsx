@@ -20,6 +20,12 @@ type AccountSnapshot = {
     opened_at: string;
   };
   cash_balance_cents: number;
+  positions: {
+    symbol: string;
+    quantity: number;
+    cost_basis_cents: number;
+    realized_pnl_cents: number;
+  }[];
 };
 
 const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -136,6 +142,12 @@ export default function Dashboard() {
 
   const firstName = profile.name.split(" ")[0] || profile.email;
   const cashBalance = account?.cash_balance_cents ?? 0;
+  const positions = account?.positions ?? [];
+  const investedCapital = positions.reduce(
+    (total, position) => total + position.cost_basis_cents,
+    0,
+  );
+  const portfolioValue = cashBalance + investedCapital;
   const changeIsPositive = quote ? quote.day_change >= 0 : true;
 
   return (
@@ -177,13 +189,21 @@ export default function Dashboard() {
           </article>
           <article className={styles.balanceCard}>
             <p>Portfolio value</p>
-            <strong>{currencyFromCents(cashBalance)}</strong>
-            <span>No positions yet</span>
+            <strong>{currencyFromCents(portfolioValue)}</strong>
+            <span>
+              {positions.length > 0
+                ? `${positions.length} open position${positions.length === 1 ? "" : "s"}`
+                : "No positions yet"}
+            </span>
           </article>
           <article className={styles.balanceCard}>
             <p>Account status</p>
-            <strong>Ready</strong>
-            <span>Paper trading only</span>
+            <strong>{positions.length > 0 ? "Invested" : "Ready"}</strong>
+            <span>
+              {positions.length > 0
+                ? `Cost basis ${currencyFromCents(investedCapital)}`
+                : "Paper trading only"}
+            </span>
           </article>
         </section>
       ) : (
@@ -201,8 +221,8 @@ export default function Dashboard() {
               <p className={styles.eyebrow}>Market snapshot</p>
               <h2>Apple Inc.</h2>
             </div>
-            <Link className={styles.textLink} href="/watchlists">
-              Watchlists
+            <Link className={styles.textLink} href="/markets">
+              Markets
             </Link>
           </div>
           {quote ? (
@@ -228,13 +248,12 @@ export default function Dashboard() {
 
         <article className={styles.nextStep}>
           <p className={styles.eyebrow}>Next step</p>
-          <h2>Build your watchlist.</h2>
+          <h2>Place your next paper trade.</h2>
           <p>
-            Save US equity symbols to revisit before simulated trade tickets
-            arrive.
+            Review quotes, pick a stock, and buy shares with your virtual cash.
           </p>
-          <Link className={styles.primaryAction} href="/watchlists">
-            Open watchlists
+          <Link className={styles.primaryAction} href="/markets">
+            Open markets
           </Link>
         </article>
       </section>

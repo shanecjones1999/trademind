@@ -20,6 +20,7 @@ const (
 	googleAuthStartPath    = "/api/v1/auth/google"
 	googleAuthCallbackPath = "/api/v1/auth/google/callback"
 	accountPath            = "/api/v1/account"
+	ordersPath             = "/api/v1/orders"
 	watchlistsPath         = "/api/v1/watchlists"
 	sessionCookieName      = "trademind_session"
 	stateCookieName        = "trademind_oauth_state"
@@ -87,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(googleAuthCallbackPath, s.googleAuthCallback)
 	mux.HandleFunc("/api/v1/me", s.me)
 	mux.HandleFunc(accountPath, s.account)
+	mux.HandleFunc(ordersPath, s.orders)
 	mux.HandleFunc(watchlistsPath, s.watchlists)
 	mux.HandleFunc(watchlistsPath+"/", s.watchlistSymbols)
 	mux.HandleFunc("/api/v1/auth/logout", s.logout)

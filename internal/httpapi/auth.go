@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -135,15 +136,7 @@ func (s *Server) account(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	snapshot, err := s.googleAuth.Accounts.Snapshot(request.Context(), session.Subject)
-	if errors.Is(err, paper.ErrAccountNotFound) {
-		if _, ensureErr := s.googleAuth.Accounts.EnsureAccount(request.Context(), session.Subject); ensureErr != nil {
-			s.logger.Error("provision missing paper account", "error", ensureErr)
-			writeError(writer, http.StatusServiceUnavailable, "unable to prepare paper account")
-			return
-		}
-		snapshot, err = s.googleAuth.Accounts.Snapshot(request.Context(), session.Subject)
-	}
+	snapshot, err := s.loadAccountSnapshot(request.Context(), session.Subject)
 	if err != nil {
 		s.logger.Error("load paper account", "error", err)
 		writeError(writer, http.StatusServiceUnavailable, "unable to load paper account")
@@ -210,4 +203,15 @@ func deleteStateCookie(writer http.ResponseWriter, secure bool) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+func (s *Server) loadAccountSnapshot(ctx context.Context, userID string) (paper.AccountSnapshot, error) {
+	snapshot, err := s.googleAuth.Accounts.Snapshot(ctx, userID)
+	if errors.Is(err, paper.ErrAccountNotFound) {
+		if _, ensureErr := s.googleAuth.Accounts.EnsureAccount(ctx, userID); ensureErr != nil {
+			return paper.AccountSnapshot{}, ensureErr
+		}
+		snapshot, err = s.googleAuth.Accounts.Snapshot(ctx, userID)
+	}
+	return snapshot, err
 }

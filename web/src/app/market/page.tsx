@@ -2,22 +2,61 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { currency, type Quote } from "@/lib/market";
+import { currency, currencyFromCents, type Quote } from "@/lib/market";
 import styles from "./page.module.css";
-
-const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-const tickerListLimit = 12;
 
 type Ticker = {
   symbol: string;
   name: string;
 };
 
+type Position = {
+  symbol: string;
+  quantity: number;
+  cost_basis_cents: number;
+  realized_pnl_cents: number;
+};
+
+type AccountSnapshot = {
+  account: {
+    id: string;
+    user_id: string;
+    opened_at: string;
+  };
+  cash_balance_cents: number;
+  positions: Position[];
+};
+
+type OrderResponse = {
+  account: AccountSnapshot;
+  fill: {
+    order: {
+      side: "buy" | "sell";
+      symbol: string;
+      quantity: number;
+    };
+    execution: {
+      price_cents: number;
+    };
+  };
+};
+
+const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+const tickerListLimit = 12;
+
 export default function MarketPage() {
   const [query, setQuery] = useState("AAPL");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [account, setAccount] = useState<AccountSnapshot | null>(null);
+  const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [isSignedIn, setIsSignedIn] = useState(true);
+  const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
+  const [orderQuantity, setOrderQuantity] = useState("1");
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderMessage, setOrderMessage] = useState<string | null>(null);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [tickerSearch, setTickerSearch] = useState("");
   const [tickers, setTickers] = useState<Ticker[]>([]);
   const [featuredQuotes, setFeaturedQuotes] = useState<Quote[]>([]);
@@ -76,16 +115,53 @@ export default function MarketPage() {
     };
   }, [tickerSearch]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadAccount() {
+      try {
+        const response = await fetch(`${apiURL}/api/v1/account`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (response.status === 401) {
+          setIsSignedIn(false);
+          setAccount(null);
+          setAccountMessage(null);
+          return;
+        }
+        if (!response.ok) {
+          setAccountMessage("Paper buying power is temporarily unavailable.");
+          return;
+        }
+        setIsSignedIn(true);
+        setAccountMessage(null);
+        setAccount((await response.json()) as AccountSnapshot);
+      } catch {
+        if (!controller.signal.aborted) {
+          setAccountMessage("TradeMind could not reach the paper-trading service.");
+        }
+      }
+    }
+
+    void loadAccount();
+    return () => controller.abort();
+  }, []);
+
   async function lookupSymbol(symbol: string) {
     const normalizedSymbol = symbol.trim();
     if (!normalizedSymbol) {
       setQuote(null);
       setMessage("Enter a US equity symbol to look it up.");
+      setOrderError(null);
+      setOrderMessage(null);
       return;
     }
 
     setIsLoading(true);
     setMessage(null);
+    setOrderError(null);
+    setOrderMessage(null);
     try {
       const response = await fetch(
         `${apiURL}/api/v1/quotes/${encodeURIComponent(normalizedSymbol)}`,
@@ -114,7 +190,72 @@ export default function MarketPage() {
     void lookupSymbol(query);
   }
 
+  async function submitOrder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!quote) {
+      setOrderError("Look up a stock before placing a paper trade.");
+      return;
+    }
+
+    const quantity = Number.parseInt(orderQuantity, 10);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      setOrderError("Enter a whole-share quantity to trade.");
+      return;
+    }
+    if (!account) {
+      setOrderError(
+        isSignedIn
+          ? "Your buying power is still loading. Please try again."
+          : "Sign in to place a paper trade.",
+      );
+      return;
+    }
+
+    setIsSubmittingOrder(true);
+    setOrderError(null);
+    setOrderMessage(null);
+    try {
+      const response = await fetch(`${apiURL}/api/v1/orders`, {
+        body: JSON.stringify({ side: orderSide, symbol: quote.symbol, quantity }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (response.status === 401) {
+        setIsSignedIn(false);
+        setAccount(null);
+        setOrderError("Sign in to place a paper trade.");
+        return;
+      }
+      if (!response.ok) {
+        setOrderError(
+          response.status === 409
+            ? orderSide === "buy"
+              ? "You do not have enough virtual cash for that order."
+              : "You do not own enough shares for that order."
+            : "We could not place that paper trade.",
+        );
+        return;
+      }
+
+      const payload = (await response.json()) as OrderResponse;
+      setAccount(payload.account);
+      setOrderMessage(
+        `${payload.fill.order.side === "buy" ? "Bought" : "Sold"} ${payload.fill.order.quantity} share${
+          payload.fill.order.quantity === 1 ? "" : "s"
+        } of ${payload.fill.order.symbol} at ${currencyFromCents(payload.fill.execution.price_cents)}.`,
+      );
+    } catch {
+      setOrderError("TradeMind could not reach the paper-trading service.");
+    } finally {
+      setIsSubmittingOrder(false);
+    }
+  }
+
   const changeIsPositive = quote ? quote.day_change >= 0 : true;
+  const buyingPower = account ? currencyFromCents(account.cash_balance_cents) : null;
+  const selectedPosition =
+    account?.positions.find((position) => position.symbol === quote?.symbol) ?? null;
 
   return (
     <main className={styles.page}>
@@ -136,8 +277,8 @@ export default function MarketPage() {
         <p className={styles.eyebrow}>Market data</p>
         <h1>Look up a stock before you trade.</h1>
         <p className={styles.description}>
-          Enter a US equity symbol to see Massive&apos;s latest available
-          end-of-day bar.
+          Enter a US equity symbol to review the latest available price and
+          place paper buy or sell orders.
         </p>
 
         <form className={styles.lookupForm} onSubmit={submitLookup}>
@@ -159,8 +300,8 @@ export default function MarketPage() {
         </form>
 
         <p className={styles.disclosure}>
-          Development data is delayed to the previous trading day and is not
-          eligible for simulated order execution.
+          Paper trades execute against the latest delayed quote available in
+          development.
         </p>
 
         <section className={styles.priceList} aria-labelledby="stock-list-title">
@@ -200,7 +341,16 @@ export default function MarketPage() {
                 );
                 const isPositive = featuredQuote ? featuredQuote.day_change >= 0 : true;
                 return (
-                  <div className={styles.tableRow} key={ticker.symbol} role="row">
+                  <button
+                    className={styles.tableRow}
+                    key={ticker.symbol}
+                    onClick={() => {
+                      setQuery(ticker.symbol);
+                      void lookupSymbol(ticker.symbol);
+                    }}
+                    role="row"
+                    type="button"
+                  >
                     <span role="cell">
                       <strong>{ticker.symbol}</strong>
                       <small>{ticker.name}</small>
@@ -222,7 +372,7 @@ export default function MarketPage() {
                         "Unavailable"
                       )}
                     </span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -230,31 +380,85 @@ export default function MarketPage() {
         </section>
 
         {quote ? (
-          <article className={styles.quoteCard} aria-live="polite">
-            <div>
-              <p className={styles.symbol}>{quote.symbol}</p>
-              <p className={styles.price}>{currency(quote.price)}</p>
-            </div>
-            <div className={styles.details}>
-              <p
-                className={
-                  changeIsPositive ? styles.positiveChange : styles.negativeChange
-                }
-              >
-                {changeIsPositive ? "+" : ""}
-                {currency(quote.day_change)} ({changeIsPositive ? "+" : ""}
-                {quote.day_change_pct.toFixed(2)}%)
+          <section className={styles.tradePanel} aria-live="polite">
+            <article className={styles.quoteCard}>
+              <div>
+                <p className={styles.symbol}>{quote.symbol}</p>
+                <p className={styles.price}>{currency(quote.price)}</p>
+              </div>
+              <div className={styles.details}>
+                <p
+                  className={
+                    changeIsPositive ? styles.positiveChange : styles.negativeChange
+                  }
+                >
+                  {changeIsPositive ? "+" : ""}
+                  {currency(quote.day_change)} ({changeIsPositive ? "+" : ""}
+                  {quote.day_change_pct.toFixed(2)}%)
+                </p>
+                <p className={styles.meta}>
+                  Previous close ·{" "}
+                  {new Intl.DateTimeFormat("en-US", {
+                    dateStyle: "medium",
+                    timeZone: "UTC",
+                  }).format(new Date(quote.as_of))}
+                </p>
+                <p className={styles.meta}>{quote.source}</p>
+              </div>
+            </article>
+
+            <aside className={styles.orderCard}>
+              <p className={styles.eyebrow}>Paper trade</p>
+              <h2>{orderSide === "buy" ? "Buy" : "Sell"} {quote.symbol}</h2>
+              <p className={styles.orderSummary}>
+                {buyingPower ? `Buying power: ${buyingPower}` : "Buying power is loading."}
               </p>
               <p className={styles.meta}>
-                Previous close ·{" "}
-                {new Intl.DateTimeFormat("en-US", {
-                  dateStyle: "medium",
-                  timeZone: "UTC",
-                }).format(new Date(quote.as_of))}
+                Shares owned: {selectedPosition?.quantity ?? 0}
               </p>
-              <p className={styles.meta}>{quote.source}</p>
-            </div>
-          </article>
+              {accountMessage ? <p className={styles.meta}>{accountMessage}</p> : null}
+              {isSignedIn ? (
+                account ? (
+                  <form className={styles.orderForm} onSubmit={submitOrder}>
+                    <label htmlFor="order-side">Action</label>
+                    <select
+                      id="order-side"
+                      onChange={(event) => setOrderSide(event.target.value as "buy" | "sell")}
+                      value={orderSide}
+                    >
+                      <option value="buy">Buy</option>
+                      <option value="sell">Sell</option>
+                    </select>
+                    <label htmlFor="order-quantity">Shares</label>
+                    <input
+                      id="order-quantity"
+                      inputMode="numeric"
+                      min={1}
+                      onChange={(event) => setOrderQuantity(event.target.value)}
+                      step={1}
+                      type="number"
+                      value={orderQuantity}
+                    />
+                    <button disabled={isSubmittingOrder} type="submit">
+                      {isSubmittingOrder
+                        ? "Placing trade..."
+                        : orderSide === "buy"
+                          ? "Buy stock"
+                          : "Sell stock"}
+                    </button>
+                  </form>
+                ) : (
+                  <p className={styles.meta}>Loading your paper account...</p>
+                )
+              ) : (
+                <a className={styles.dashboardLink} href={`${apiURL}/api/v1/auth/google`}>
+                  Sign in to buy
+                </a>
+              )}
+              {orderError ? <p className={styles.orderError}>{orderError}</p> : null}
+              {orderMessage ? <p className={styles.orderSuccess}>{orderMessage}</p> : null}
+            </aside>
+          </section>
         ) : (
           <article className={styles.unavailable} aria-live="polite">
             {message ?? "Enter a symbol to retrieve a quote."}

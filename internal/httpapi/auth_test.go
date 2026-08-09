@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shanecjones1999/trademind/internal/identity"
+	"github.com/shanecjones1999/trademind/internal/market"
 	"github.com/shanecjones1999/trademind/internal/paper"
 )
 
@@ -28,6 +29,8 @@ type fakeAccounts struct {
 	ensureErr    error
 	snapshotErr  error
 	snapshotErrs []error
+	applyErr     error
+	appliedFill  paper.OrderFill
 	ensuredFor   string
 	snapshotFor  []string
 }
@@ -109,6 +112,89 @@ func TestWatchlistsRequireAuthenticationAndSupportCreation(t *testing.T) {
 	}
 }
 
+func TestOrdersRequireAuthenticationAndFillPaperOrders(t *testing.T) {
+	sessions, err := identity.NewSessionManager("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("create sessions: %v", err)
+	}
+	accounts := &fakeAccounts{
+		snapshot: paper.AccountSnapshot{
+			Account: paper.PaperAccount{
+				ID:       "paper-account-1",
+				UserID:   "google-subject",
+				OpenedAt: time.Date(2026, 8, 8, 0, 0, 0, 0, time.UTC),
+			},
+			CashBalanceCents: paper.DefaultStartingCashCents,
+			Positions:        []paper.Position{},
+		},
+	}
+	server := NewServer(
+		stubQuotes{
+			quote: market.Quote{
+				Symbol: "AAPL",
+				Price:  191.30,
+				AsOf:   time.Now().UTC().Add(-time.Hour),
+				Source: "Massive",
+			},
+		},
+		nil,
+		slog.Default(),
+		WithGoogleAuth(GoogleAuthConfig{
+			Authenticator: &fakeGoogleAuthenticator{},
+			Sessions:      sessions,
+			Accounts:      accounts,
+		}),
+	)
+
+	unauthenticatedRequest := httptest.NewRequest(http.MethodPost, ordersPath, strings.NewReader(`{"symbol":"AAPL","quantity":1}`))
+	unauthenticatedRequest.Header.Set("Content-Type", "application/json")
+	unauthenticatedResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unauthenticatedResponse, unauthenticatedRequest)
+	if unauthenticatedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want %d", unauthenticatedResponse.Code, http.StatusUnauthorized)
+	}
+
+	sessionToken, _, err := sessions.CreateSession(identity.Profile{
+		Subject: "google-subject",
+		Email:   "user@example.com",
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	orderRequest := httptest.NewRequest(http.MethodPost, ordersPath, strings.NewReader(`{"symbol":"aapl","quantity":2}`))
+	orderRequest.Header.Set("Content-Type", "application/json")
+	orderRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+	orderResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(orderResponse, orderRequest)
+	if orderResponse.Code != http.StatusCreated {
+		t.Fatalf("order status = %d, want %d", orderResponse.Code, http.StatusCreated)
+	}
+	if accounts.appliedFill.Order.Symbol != "AAPL" {
+		t.Fatalf("applied symbol = %q, want AAPL", accounts.appliedFill.Order.Symbol)
+	}
+	if accounts.appliedFill.Order.Quantity != 2 {
+		t.Fatalf("applied quantity = %d, want 2", accounts.appliedFill.Order.Quantity)
+	}
+	if len(accounts.snapshot.Positions) != 1 || accounts.snapshot.Positions[0].Quantity != 2 {
+		t.Fatalf("positions = %#v, want one 2-share position", accounts.snapshot.Positions)
+	}
+
+	sellRequest := httptest.NewRequest(http.MethodPost, ordersPath, strings.NewReader(`{"side":"sell","symbol":"aapl","quantity":1}`))
+	sellRequest.Header.Set("Content-Type", "application/json")
+	sellRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
+	sellResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(sellResponse, sellRequest)
+	if sellResponse.Code != http.StatusCreated {
+		t.Fatalf("sell status = %d, want %d", sellResponse.Code, http.StatusCreated)
+	}
+	if accounts.appliedFill.Order.Side != paper.OrderSideSell {
+		t.Fatalf("applied side = %q, want sell", accounts.appliedFill.Order.Side)
+	}
+	if len(accounts.snapshot.Positions) != 1 || accounts.snapshot.Positions[0].Quantity != 1 {
+		t.Fatalf("positions after sell = %#v, want one 1-share position", accounts.snapshot.Positions)
+	}
+}
+
 func (f *fakeAccounts) Snapshot(_ context.Context, userID string) (paper.AccountSnapshot, error) {
 	f.snapshotFor = append(f.snapshotFor, userID)
 	if len(f.snapshotErrs) > 0 {
@@ -120,6 +206,37 @@ func (f *fakeAccounts) Snapshot(_ context.Context, userID string) (paper.Account
 }
 
 func (f *fakeAccounts) PostTransaction(_ context.Context, _ paper.Transaction) error {
+	return nil
+}
+
+func (f *fakeAccounts) ApplyOrderFill(_ context.Context, fill paper.OrderFill) error {
+	if f.applyErr != nil {
+		return f.applyErr
+	}
+	f.appliedFill = fill
+	f.snapshot.CashBalanceCents += fill.CashTransaction.Postings[0].Amount
+	for index, position := range f.snapshot.Positions {
+		if position.Symbol != fill.Order.Symbol {
+			continue
+		}
+		if fill.Order.Side == paper.OrderSideBuy {
+			f.snapshot.Positions[index].Quantity += fill.Order.Quantity
+			f.snapshot.Positions[index].CostBasisCents += -fill.CashTransaction.Postings[0].Amount
+		} else {
+			f.snapshot.Positions[index].Quantity -= fill.Order.Quantity
+			if f.snapshot.Positions[index].Quantity == 0 {
+				f.snapshot.Positions = append(f.snapshot.Positions[:index], f.snapshot.Positions[index+1:]...)
+			}
+		}
+		return nil
+	}
+	if fill.Order.Side == paper.OrderSideBuy {
+		f.snapshot.Positions = append(f.snapshot.Positions, paper.Position{
+			Symbol:         fill.Order.Symbol,
+			Quantity:       fill.Order.Quantity,
+			CostBasisCents: -fill.CashTransaction.Postings[0].Amount,
+		})
+	}
 	return nil
 }
 

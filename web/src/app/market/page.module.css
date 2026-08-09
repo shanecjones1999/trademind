@@ -188,9 +188,17 @@
 
 .tableRow {
   border-bottom: 1px solid #dbe7de;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  background: transparent;
   color: #12251f;
+  cursor: pointer;
+  font: inherit;
   font-size: 0.92rem;
   padding: 15px 0;
+  text-align: left;
+  width: 100%;
 }
 
 .tableRow:last-child {
@@ -228,6 +236,19 @@
   padding: 30px;
 }
 
+.tradePanel {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
+  margin-top: 48px;
+  max-width: 960px;
+}
+
+.tradePanel .quoteCard {
+  margin-top: 0;
+  max-width: none;
+}
+
 .symbol {
   color: #37775d;
   font-size: 0.88rem;
@@ -245,6 +266,73 @@
 
 .details {
   text-align: right;
+}
+
+.orderCard {
+  background: #f1f5f1;
+  border-radius: 22px;
+  padding: 30px;
+}
+
+.orderCard h2 {
+  color: #12251f;
+  font-size: 1.5rem;
+  letter-spacing: -0.04em;
+  margin: 10px 0 0;
+}
+
+.orderSummary {
+  color: #12251f;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 18px;
+}
+
+.orderForm {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.orderForm label {
+  color: #52635b;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.orderForm input {
+  background: #fffdf8;
+  border: 1px solid #b7cbbd;
+  border-radius: 10px;
+  color: #12251f;
+  font: inherit;
+  padding: 11px 13px;
+}
+
+.orderForm select {
+  background: #fffdf8;
+  border: 1px solid #b7cbbd;
+  border-radius: 10px;
+  color: #12251f;
+  font: inherit;
+  padding: 11px 13px;
+}
+
+.orderForm button {
+  background: #12251f;
+  border: 0;
+  border-radius: 999px;
+  color: #fffdf8;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  margin-top: 6px;
+  padding: 13px 18px;
+}
+
+.orderForm button:disabled {
+  background: #75867d;
+  cursor: progress;
 }
 
 .positiveChange,
@@ -265,6 +353,21 @@
   color: #5d7468;
   font-size: 0.82rem;
   margin-top: 8px;
+}
+
+.orderError,
+.orderSuccess {
+  font-size: 0.84rem;
+  line-height: 1.45;
+  margin-top: 16px;
+}
+
+.orderError {
+  color: #a42b36;
+}
+
+.orderSuccess {
+  color: #17734c;
 }
 
 .unavailable {
@@ -304,6 +407,10 @@
     align-items: start;
     flex-direction: column;
     gap: 22px;
+  }
+
+  .tradePanel {
+    grid-template-columns: 1fr;
   }
 
   .lookupForm {
