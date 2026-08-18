@@ -3,6 +3,13 @@
   <img src="TradeMind-dark.svg#gh-dark-mode-only" alt="TradeMind" width="220" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/shanecjones1999/trademind/blob/main/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/shanecjones1999/trademind" alt="Go version" /></a>
+  <a href="https://github.com/shanecjones1999/trademind/commits/main"><img src="https://img.shields.io/github/last-commit/shanecjones1999/trademind" alt="Last commit" /></a>
+  <a href="https://github.com/shanecjones1999/trademind/issues"><img src="https://img.shields.io/github/issues/shanecjones1999/trademind" alt="Issues" /></a>
+  <a href="https://github.com/shanecjones1999/trademind/stargazers"><img src="https://img.shields.io/github/stars/shanecjones1999/trademind" alt="Stars" /></a>
+</p>
+
 # TradeMind API
 
 The first backend service for TradeMind's paper-trading platform. It provides a
