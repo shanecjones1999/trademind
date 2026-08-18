@@ -103,6 +103,34 @@ func TestMassiveClientQuotesUsesOneGroupedDailyRequest(t *testing.T) {
 	}
 }
 
+func TestMassiveClientSyncGroupedDailyReturnsEveryBar(t *testing.T) {
+	dailyClient := &fakeMassiveGroupedDailyClient{bars: []massiveDailyBar{
+		{Symbol: "AAPL", Open: 190.06, Close: 191.30, AtUnix: 1717113600000},
+		{Symbol: "MSFT", Open: 420.00, Close: 418.00, AtUnix: 1717113600000},
+	}}
+	client := &MassiveClient{apiKey: "test-key", daily: dailyClient}
+
+	quotes, err := client.SyncGroupedDaily(context.Background(), "2026-08-07")
+	if err != nil {
+		t.Fatalf("sync grouped daily: %v", err)
+	}
+	if dailyClient.calls != 1 {
+		t.Fatalf("grouped daily calls = %d, want 1", dailyClient.calls)
+	}
+	if len(quotes) != 2 {
+		t.Fatalf("quotes = %#v, want 2 entries", quotes)
+	}
+}
+
+func TestMassiveClientSyncGroupedDailyRequiresAPIKey(t *testing.T) {
+	client := NewMassiveClient("")
+
+	_, err := client.SyncGroupedDaily(context.Background(), "2026-08-07")
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("SyncGroupedDaily error = %v, want ErrNotConfigured", err)
+	}
+}
+
 func TestLastCompletedTradingDateSkipsWeekends(t *testing.T) {
 	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
 	if got, want := lastCompletedTradingDate(now).Format(time.DateOnly), "2026-08-07"; got != want {

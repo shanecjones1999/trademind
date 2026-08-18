@@ -163,6 +163,34 @@ func (c *MassiveClient) Quote(ctx context.Context, symbol string) (Quote, error)
 	}, nil
 }
 
+// SyncGroupedDaily fetches every symbol's end-of-day bar for date directly
+// from Massive, bypassing the in-memory cache used by Quotes. It is intended
+// for a periodic sync job that persists quotes to Postgres so the API
+// request path never calls Massive.
+func (c *MassiveClient) SyncGroupedDaily(ctx context.Context, date string) ([]Quote, error) {
+	if c.apiKey == "" || c.daily == nil {
+		return nil, ErrNotConfigured
+	}
+
+	bars, err := c.daily.GroupedDaily(ctx, date)
+	if err != nil {
+		return nil, err
+	}
+
+	quotesBySymbol := dailyQuotes(bars)
+	quotes := make([]Quote, 0, len(quotesBySymbol))
+	for _, quote := range quotesBySymbol {
+		quotes = append(quotes, quote)
+	}
+	return quotes, nil
+}
+
+// LastCompletedTradingDate returns the most recent completed trading date
+// (America/New_York, skipping weekends) formatted as YYYY-MM-DD.
+func LastCompletedTradingDate() string {
+	return lastCompletedTradingDate(time.Now()).Format(time.DateOnly)
+}
+
 func (c *MassiveClient) SearchTickers(ctx context.Context, search string, limit int) ([]Ticker, error) {
 	if c.apiKey == "" || c.tickers == nil {
 		return nil, ErrNotConfigured

@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS quotes (
+    symbol TEXT PRIMARY KEY,
+    price DOUBLE PRECISION NOT NULL,
+    day_change DOUBLE PRECISION NOT NULL,
+    day_change_pct DOUBLE PRECISION NOT NULL,
+    as_of TIMESTAMPTZ NOT NULL,
+    source TEXT NOT NULL,
+    synced_at TIMESTAMPTZ NOT NULL
+);

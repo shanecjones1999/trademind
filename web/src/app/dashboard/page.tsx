@@ -1,9 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { currency, currencyFromCents, type Quote } from "@/lib/market";
+import Nav from "@/app/_components/Nav";
+import HoldingsTable from "@/app/_components/HoldingsTable";
+import { currencyFromCents, type Quote } from "@/lib/market";
+import {
+  allTimeReturnCents,
+  allTimeReturnPct,
+  buildHoldingsRows,
+  quotesBySymbol,
+  totalMarketValueCents,
+  totalTodayChangeCents,
+  type Position,
+} from "@/lib/portfolio";
 import styles from "./page.module.css";
 
 type Profile = {
@@ -20,25 +30,25 @@ type AccountSnapshot = {
     opened_at: string;
   };
   cash_balance_cents: number;
-  positions: {
-    symbol: string;
-    quantity: number;
-    cost_basis_cents: number;
-    realized_pnl_cents: number;
-  }[];
+  positions: Position[];
 };
 
 const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
+function signed(value: number) {
+  return value >= 0 ? "+" : "";
+}
+
+function changeClass(value: number) {
+  return value >= 0 ? styles.positiveChange : styles.negativeChange;
+}
+
 export default function Dashboard() {
-  const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
-  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
-  const [isSigningOut, setIsSigningOut] = useState(false);
-  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,25 +68,31 @@ export default function Dashboard() {
         }
         setProfile((await profileResponse.json()) as Profile);
 
-        const [accountResponse, quoteResponse] = await Promise.all([
-          fetch(`${apiURL}/api/v1/account`, {
-            credentials: "include",
-            signal: controller.signal,
-          }),
-          fetch(`${apiURL}/api/v1/quotes/AAPL`, { signal: controller.signal }),
-        ]);
+        const accountResponse = await fetch(`${apiURL}/api/v1/account`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
 
-        if (accountResponse.ok) {
-          setAccount((await accountResponse.json()) as AccountSnapshot);
-        } else if (accountResponse.status === 503) {
+        if (!accountResponse.ok) {
           setAccountError(
-            "Paper accounts are not configured yet. Add DATABASE_URL to the API to activate your virtual cash.",
+            accountResponse.status === 503
+              ? "Paper accounts are not configured yet. Add DATABASE_URL to the API to activate your virtual cash."
+              : "We could not load your paper account.",
           );
-        } else {
-          setAccountError("We could not load your paper account.");
+          return;
         }
-        if (quoteResponse.ok) {
-          setQuote((await quoteResponse.json()) as Quote);
+
+        const snapshot = (await accountResponse.json()) as AccountSnapshot;
+        setAccount(snapshot);
+
+        if (snapshot.positions.length > 0) {
+          const symbols = snapshot.positions.map((position) => position.symbol).join(",");
+          const quoteResponse = await fetch(`${apiURL}/api/v1/quotes?symbols=${symbols}`, {
+            signal: controller.signal,
+          });
+          if (quoteResponse.ok) {
+            setQuotes((await quoteResponse.json()) as Quote[]);
+          }
         }
       } catch {
         if (!controller.signal.aborted) {
@@ -94,26 +110,6 @@ export default function Dashboard() {
     void loadProfile();
     return () => controller.abort();
   }, []);
-
-  async function signOut() {
-    setIsSigningOut(true);
-    setSignOutError(null);
-    try {
-      const response = await fetch(`${apiURL}/api/v1/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        setSignOutError("We could not sign you out. Please try again.");
-        return;
-      }
-      router.replace("/");
-    } catch {
-      setSignOutError("TradeMind could not reach the sign-out service.");
-    } finally {
-      setIsSigningOut(false);
-    }
-  }
 
   if (!hasLoaded) {
     return (
@@ -143,31 +139,18 @@ export default function Dashboard() {
   const firstName = profile.name.split(" ")[0] || profile.email;
   const cashBalance = account?.cash_balance_cents ?? 0;
   const positions = account?.positions ?? [];
-  const investedCapital = positions.reduce(
-    (total, position) => total + position.cost_basis_cents,
-    0,
-  );
-  const portfolioValue = cashBalance + investedCapital;
-  const changeIsPositive = quote ? quote.day_change >= 0 : true;
+  const holdingsRows = buildHoldingsRows(positions, quotesBySymbol(quotes));
+  const marketValue = totalMarketValueCents(holdingsRows);
+  const totalEquity = cashBalance + marketValue;
+  const todayChange = totalTodayChangeCents(holdingsRows);
+  const priorEquity = totalEquity - todayChange;
+  const todayChangePct = priorEquity !== 0 ? (todayChange / priorEquity) * 100 : 0;
+  const allTimeChange = allTimeReturnCents(totalEquity);
+  const allTimeChangePct = allTimeReturnPct(totalEquity);
 
   return (
     <main className={styles.page}>
-      <nav className={styles.nav}>
-        <Link className={styles.brand} href="/">
-          TradeMind
-        </Link>
-        <div className={styles.accountMenu}>
-          <span className={styles.email}>{profile.email}</span>
-          <button
-            className={styles.signOut}
-            disabled={isSigningOut}
-            onClick={signOut}
-            type="button"
-          >
-            {isSigningOut ? "Signing out..." : "Sign out"}
-          </button>
-        </div>
-      </nav>
+      <Nav active="dashboard" />
 
       <header className={styles.intro}>
         <p className={styles.eyebrow}>Your paper portfolio</p>
@@ -178,32 +161,39 @@ export default function Dashboard() {
         </p>
       </header>
 
-      {signOutError ? <p className={styles.error}>{signOutError}</p> : null}
-
       {account ? (
         <section className={styles.balanceGrid} aria-label="Paper account summary">
           <article className={styles.primaryBalance}>
-            <p>Virtual cash</p>
+            <p>Total equity</p>
+            <strong>{currencyFromCents(totalEquity)}</strong>
+            <span>Cash + holdings</span>
+          </article>
+          <article className={styles.balanceCard}>
+            <p>Today&apos;s return</p>
+            <strong className={changeClass(todayChange)}>
+              {signed(todayChange)}
+              {currencyFromCents(todayChange)}
+            </strong>
+            <span className={changeClass(todayChangePct)}>
+              {signed(todayChangePct)}
+              {todayChangePct.toFixed(2)}%
+            </span>
+          </article>
+          <article className={styles.balanceCard}>
+            <p>All-time return</p>
+            <strong className={changeClass(allTimeChange)}>
+              {signed(allTimeChange)}
+              {currencyFromCents(allTimeChange)}
+            </strong>
+            <span className={changeClass(allTimeChangePct)}>
+              {signed(allTimeChangePct)}
+              {allTimeChangePct.toFixed(2)}%
+            </span>
+          </article>
+          <article className={styles.balanceCard}>
+            <p>Buying power</p>
             <strong>{currencyFromCents(cashBalance)}</strong>
             <span>Available to invest</span>
-          </article>
-          <article className={styles.balanceCard}>
-            <p>Portfolio value</p>
-            <strong>{currencyFromCents(portfolioValue)}</strong>
-            <span>
-              {positions.length > 0
-                ? `${positions.length} open position${positions.length === 1 ? "" : "s"}`
-                : "No positions yet"}
-            </span>
-          </article>
-          <article className={styles.balanceCard}>
-            <p>Account status</p>
-            <strong>{positions.length > 0 ? "Invested" : "Ready"}</strong>
-            <span>
-              {positions.length > 0
-                ? `Cost basis ${currencyFromCents(investedCapital)}`
-                : "Paper trading only"}
-            </span>
           </article>
         </section>
       ) : (
@@ -215,47 +205,31 @@ export default function Dashboard() {
       )}
 
       <section className={styles.workspace}>
-        <article className={styles.marketCard}>
+        <article className={styles.holdingsCard}>
           <div className={styles.cardHeading}>
             <div>
-              <p className={styles.eyebrow}>Market snapshot</p>
-              <h2>Apple Inc.</h2>
+              <p className={styles.eyebrow}>Holdings</p>
+              <h2>Your open positions.</h2>
             </div>
-            <Link className={styles.textLink} href="/markets">
+            <Link className={styles.textLink} href="/market">
               Markets
             </Link>
           </div>
-          {quote ? (
-            <div className={styles.quote}>
-              <div>
-                <p className={styles.symbol}>{quote.symbol}</p>
-                <strong>{currency(quote.price)}</strong>
-              </div>
-              <p
-                className={
-                  changeIsPositive ? styles.positiveChange : styles.negativeChange
-                }
-              >
-                {changeIsPositive ? "+" : ""}
-                {currency(quote.day_change)} ({changeIsPositive ? "+" : ""}
-                {quote.day_change_pct.toFixed(2)}%)
-              </p>
-            </div>
-          ) : (
-            <p className={styles.muted}>Market data is temporarily unavailable.</p>
-          )}
+          <HoldingsTable rows={holdingsRows} />
         </article>
 
-        <article className={styles.nextStep}>
-          <p className={styles.eyebrow}>Next step</p>
-          <h2>Place your next paper trade.</h2>
-          <p>
-            Review quotes, pick a stock, and buy shares with your virtual cash.
-          </p>
-          <Link className={styles.primaryAction} href="/markets">
-            Open markets
-          </Link>
-        </article>
+        {holdingsRows.length === 0 ? (
+          <article className={styles.nextStep}>
+            <p className={styles.eyebrow}>Next step</p>
+            <h2>Place your next paper trade.</h2>
+            <p>
+              Review quotes, pick a stock, and buy shares with your virtual cash.
+            </p>
+            <Link className={styles.primaryAction} href="/market">
+              Open markets
+            </Link>
+          </article>
+        ) : null}
       </section>
 
       <p className={styles.disclosure}>

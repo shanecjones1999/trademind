@@ -46,6 +46,12 @@ func TestFillOrderUsesAskForBuysAndPostsBalancedCash(t *testing.T) {
 	if fill.CashTransaction.Postings[0].Amount != -60_600 {
 		t.Fatalf("cash posting = %d, want -60600", fill.CashTransaction.Postings[0].Amount)
 	}
+	if fill.Execution.GrossCents != -60_600 {
+		t.Fatalf("gross = %d, want -60600", fill.Execution.GrossCents)
+	}
+	if fill.Execution.CashTransactionID != fill.CashTransaction.ID {
+		t.Fatalf("cash transaction id = %q, want %q", fill.Execution.CashTransactionID, fill.CashTransaction.ID)
+	}
 	if err := NewLedger().Post(fill.CashTransaction); err != nil {
 		t.Fatalf("cash transaction is not balanced: %v", err)
 	}

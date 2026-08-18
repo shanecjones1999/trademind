@@ -26,15 +26,62 @@ type createOrderResponse struct {
 	Fill    paper.OrderFill       `json:"fill"`
 }
 
+type listOrdersResponse struct {
+	Orders []paper.OrderHistoryEntry `json:"orders"`
+	Total  int                       `json:"total"`
+	Limit  int                       `json:"limit"`
+	Offset int                       `json:"offset"`
+}
+
 func (s *Server) orders(writer http.ResponseWriter, request *http.Request) {
 	if !s.tradingConfigured(writer) {
 		return
 	}
-	if request.Method != http.MethodPost {
-		methodNotAllowed(writer, http.MethodPost)
+	switch request.Method {
+	case http.MethodGet:
+		s.listOrders(writer, request)
+	case http.MethodPost:
+		s.createOrder(writer, request)
+	default:
+		methodNotAllowed(writer, http.MethodGet+", "+http.MethodPost)
+	}
+}
+
+func (s *Server) listOrders(writer http.ResponseWriter, request *http.Request) {
+	session, ok := s.sessionFromRequest(writer, request)
+	if !ok {
 		return
 	}
 
+	limit, err := parseListLimit(request.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "limit must be between 1 and 200")
+		return
+	}
+	offset, err := parseListOffset(request.URL.Query().Get("offset"))
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "offset must be 0 or greater")
+		return
+	}
+
+	page, err := s.googleAuth.Accounts.ListOrders(request.Context(), session.Subject, limit, offset)
+	if err != nil {
+		s.logger.Error("list paper orders", "error", err)
+		writeError(writer, http.StatusServiceUnavailable, "unable to load trade history")
+		return
+	}
+	if page.Orders == nil {
+		page.Orders = []paper.OrderHistoryEntry{}
+	}
+	writeJSON(writer, http.StatusOK, listOrdersResponse{
+		Orders: page.Orders,
+		Total:  page.Total,
+		Limit:  page.Limit,
+		Offset: page.Offset,
+	})
+}
+
+func (s *Server) createOrder(writer http.ResponseWriter, request *http.Request) {
 	session, ok := s.sessionFromRequest(writer, request)
 	if !ok {
 		return
@@ -105,12 +152,15 @@ func (s *Server) orders(writer http.ResponseWriter, request *http.Request) {
 		now,
 	)
 	if err != nil {
+		if errors.Is(err, paper.ErrStaleQuote) {
+			s.logger.Error("paper order rejected because quote is stale", "error", err, "symbol", symbol, "quote_as_of", executableQuote.AsOf)
+		}
 		writeOrderError(writer, err)
 		return
 	}
 	if err := s.googleAuth.Accounts.ApplyOrderFill(request.Context(), fill); err != nil {
 		s.logger.Error("persist paper order fill", "error", err, "symbol", symbol)
-		writeError(writer, http.StatusServiceUnavailable, "unable to place order")
+		writeOrderError(writer, err)
 		return
 	}
 
@@ -145,7 +195,9 @@ func writeOrderError(writer http.ResponseWriter, err error) {
 		writeError(writer, http.StatusConflict, "insufficient position quantity")
 	case errors.Is(err, paper.ErrInvalidOrder):
 		writeError(writer, http.StatusBadRequest, "order details are invalid")
-	case errors.Is(err, paper.ErrStaleQuote), errors.Is(err, paper.ErrLimitNotEligible):
+	case errors.Is(err, paper.ErrStaleQuote):
+		writeError(writer, http.StatusBadGateway, "this quote is too old to execute a paper trade")
+	case errors.Is(err, paper.ErrLimitNotEligible):
 		writeError(writer, http.StatusBadGateway, "market data is temporarily unavailable")
 	default:
 		writeError(writer, http.StatusServiceUnavailable, "unable to place order")

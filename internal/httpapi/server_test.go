@@ -191,11 +191,11 @@ func TestQuoteRejectsUnknownSymbol(t *testing.T) {
 	}
 }
 
-func TestCORSPreflightAllowsWatchlistDeletion(t *testing.T) {
+func TestCORSPreflightAllowsConfiguredOrigin(t *testing.T) {
 	server := NewServer(stubQuotes{}, []string{"http://localhost:3000"}, slog.Default())
-	request := httptest.NewRequest(http.MethodOptions, "/api/v1/watchlists/watchlist-1/symbols/AAPL", nil)
+	request := httptest.NewRequest(http.MethodOptions, "/api/v1/orders", nil)
 	request.Header.Set("Origin", "http://localhost:3000")
-	request.Header.Set("Access-Control-Request-Method", http.MethodDelete)
+	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
 	response := httptest.NewRecorder()
 
 	server.Handler().ServeHTTP(response, request)
@@ -204,7 +204,7 @@ func TestCORSPreflightAllowsWatchlistDeletion(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
 	}
 	methods := response.Header().Get("Access-Control-Allow-Methods")
-	if methods != "GET, POST, DELETE, OPTIONS" {
-		t.Fatalf("allowed methods = %q, want DELETE included", methods)
+	if methods != "GET, POST, OPTIONS" {
+		t.Fatalf("allowed methods = %q, want GET, POST, OPTIONS", methods)
 	}
 }

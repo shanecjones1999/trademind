@@ -1,0 +1,50 @@
+.bar {
+  border-radius: 12px;
+  display: flex;
+  gap: 2px;
+  height: 24px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.segment {
+  min-width: 2px;
+}
+
+.legend {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  list-style: none;
+  margin-top: 18px;
+}
+
+.legend li {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.swatch {
+  border-radius: 4px;
+  flex-shrink: 0;
+  height: 12px;
+  width: 12px;
+}
+
+.legendLabel {
+  color: #12251f;
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.legendValue {
+  color: #5d7468;
+  font-size: 0.8rem;
+}
+
+.empty {
+  color: #5d7468;
+  line-height: 1.5;
+}

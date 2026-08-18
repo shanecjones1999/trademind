@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	quotes := market.NewMassiveClient(cfg.MassiveAPIKey)
+	var quotes market.QuoteProvider
 	var accounts paper.AccountRepository
 	var tickers market.TickerProvider
 	if cfg.DatabaseURL != "" {
@@ -48,9 +48,20 @@ func main() {
 		defer catalog.Close()
 		tickers = catalog
 		logger.Info("local ticker catalog enabled")
+
+		quoteStore, err := market.OpenPostgresQuoteStore(context.Background(), cfg.DatabaseURL)
+		if err != nil {
+			logger.Error("initialize quote store", "error", err)
+			os.Exit(1)
+		}
+		defer quoteStore.Close()
+		quotes = quoteStore
+		logger.Info("local quote store enabled: run quote-sync to keep it populated")
 	} else {
 		logger.Warn("paper-account persistence disabled: set DATABASE_URL to provision paper accounts")
 		logger.Warn("local ticker catalog disabled: set DATABASE_URL and run ticker-sync before ticker search is available")
+		logger.Warn("local quote store disabled: quotes will be requested live from Massive; set DATABASE_URL and run quote-sync to avoid provider rate limits")
+		quotes = market.NewMassiveClient(cfg.MassiveAPIKey)
 	}
 
 	apiOptions := []httpapi.Option{httpapi.WithTickerProvider(tickers)}
@@ -75,7 +86,6 @@ func main() {
 			Authenticator:   googleAuth,
 			Sessions:        sessions,
 			Accounts:        accounts,
-			Watchlists:      watchlistRepository(accounts),
 			SuccessRedirect: cfg.AppWebURL,
 			SecureCookies:   strings.HasPrefix(cfg.GoogleRedirectURL, "https://"),
 		}))
@@ -113,11 +123,6 @@ func main() {
 			os.Exit(1)
 		}
 	}
-}
-
-func watchlistRepository(accounts paper.AccountRepository) paper.WatchlistRepository {
-	watchlists, _ := accounts.(paper.WatchlistRepository)
-	return watchlists
 }
 
 func shutdownSignal() <-chan os.Signal {

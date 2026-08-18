@@ -7,7 +7,7 @@ Create a paper-trading platform with a Go backend, a Next.js web app, and React 
 ## 1. Define the MVP
 
 - Account creation and onboarding with a virtual balance, such as $100,000 USD.
-- Watchlists, symbol search, quotes, charts, buy and sell flows, holdings, transaction history, and portfolio performance.
+- Symbol search, quotes, charts, buy and sell flows, holdings, transaction history, and portfolio performance.
 - Start with US-listed common stocks and ETFs. Initial primary exchanges are
   NASDAQ, NYSE, NYSE American, NYSE Arca, and Cboe US equities exchanges; add
   OTC, foreign primary listings, crypto, options, warrants, and other
@@ -48,7 +48,7 @@ Create a paper-trading platform with a Go backend, a Next.js web app, and React 
 ## 5. Design the user experience
 
 - **Home:** Total equity, daily and all-time returns, buying power, and holdings.
-- **Discover:** Symbol lookup, watchlists, movers, security details, charts, and quote metadata.
+- **Discover:** Symbol lookup, movers, security details, charts, and quote metadata.
 - **Trade ticket:** Side, order type, quantity or dollar amount, estimated cost, buying-power impact, confirmation, and order receipt.
 - **Portfolio:** Allocation, position-level P&L, activity, open orders, and performance history.
 - Use push notifications for fills, price alerts, and market-status changes.
@@ -65,7 +65,6 @@ Main entities:
 - `positions`
 - `instruments`
 - `quotes`
-- `watchlists`
 - `price_alerts`
 - `corporate_actions`
 
@@ -73,7 +72,6 @@ Main API areas:
 
 - Authentication
 - Instruments and quotes
-- Watchlists
 - Orders
 - Portfolio
 - Activity
@@ -91,7 +89,7 @@ Maintain auditable order and ledger history. Derive balances from ledger entries
    provider stable identifiers distinguish renamed or reused ticker symbols.
 2. Add a catalog repository that supports transactional page upserts, exact
    active-symbol lookup, and indexed active symbol/name search. Make the ticker
-   API and new watchlist/order validation use it.
+   API and new order validation use it.
 3. Run a server-side bootstrap command, then a daily scheduled full refresh.
    Fetch the allowed exchange/type scopes from Massive, consume all
    pagination cursors, and record a sync run as complete only after every
@@ -139,15 +137,15 @@ Maintain auditable order and ledger history. Derive balances from ledger entries
   NYSE, NYSE American, NYSE Arca, and Cboe-listed common stocks and ETFs
 - [ ] Licensed real-time quote ingestion, caching, and freshness handling
 - [~] Exact-symbol lookup through development quote API
-- [~] Web paper-account overview with virtual cash, portfolio-value placeholder, account status, market snapshot, and sign-out
-- [~] Holdings and portfolio performance history
-- [x] Persistent watchlists for US equity symbols
+- [x] Web paper-account overview with virtual cash, total equity, daily and all-time returns, buying power, and sign-out
+- [x] Holdings with live market value and unrealized/realized P&L
 
 ### Phase 3: Web MVP trading
 
 - [~] Exact-cent order validation and fill-rule domain
 - [~] Ledger and fills
-- Portfolio performance
+- [x] Trade history (paginated History tab with per-sale realized P&L)
+- [~] Portfolio performance (allocation, position P&L, activity, and returns shipped; historical equity chart still pending)
 - Web MVP release
 
 ### Phase 4: Mobile apps

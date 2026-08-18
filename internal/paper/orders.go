@@ -78,14 +78,30 @@ type FillPolicy struct {
 }
 
 type Execution struct {
-	ID          string    `json:"id"`
-	OrderID     string    `json:"order_id"`
-	Symbol      string    `json:"symbol"`
-	Quantity    int64     `json:"quantity"`
-	PriceCents  Money     `json:"price_cents"`
-	OccurredAt  time.Time `json:"occurred_at"`
-	QuoteAsOf   time.Time `json:"quote_as_of"`
-	QuoteSource string    `json:"quote_source"`
+	ID                string    `json:"id"`
+	OrderID           string    `json:"order_id"`
+	Symbol            string    `json:"symbol"`
+	Quantity          int64     `json:"quantity"`
+	PriceCents        Money     `json:"price_cents"`
+	OccurredAt        time.Time `json:"occurred_at"`
+	QuoteAsOf         time.Time `json:"quote_as_of"`
+	QuoteSource       string    `json:"quote_source"`
+	GrossCents        Money     `json:"gross_cents"`
+	RealizedPnLCents  *Money    `json:"realized_pnl_cents"`
+	CashTransactionID string    `json:"cash_transaction_id,omitempty"`
+}
+
+// OrderHistoryEntry is a filled order plus its execution, newest first in lists.
+type OrderHistoryEntry struct {
+	Order
+	Execution Execution `json:"execution"`
+}
+
+type OrderHistoryPage struct {
+	Orders []OrderHistoryEntry `json:"orders"`
+	Total  int                 `json:"total"`
+	Limit  int                 `json:"limit"`
+	Offset int                 `json:"offset"`
 }
 
 type OrderFill struct {
@@ -186,6 +202,8 @@ func FillOrder(order Order, quote ExecutableQuote, policy FillPolicy, cashBalanc
 	if err != nil {
 		return OrderFill{}, err
 	}
+	execution.GrossCents = transaction.Postings[0].Amount
+	execution.CashTransactionID = transaction.ID
 	return OrderFill{
 		Order:           filledOrder,
 		Execution:       execution,

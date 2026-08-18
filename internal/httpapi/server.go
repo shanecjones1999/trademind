@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -20,10 +21,11 @@ const (
 	googleAuthStartPath    = "/api/v1/auth/google"
 	googleAuthCallbackPath = "/api/v1/auth/google/callback"
 	accountPath            = "/api/v1/account"
+	accountActivityPath    = "/api/v1/account/activity"
 	ordersPath             = "/api/v1/orders"
-	watchlistsPath         = "/api/v1/watchlists"
 	sessionCookieName      = "trademind_session"
 	stateCookieName        = "trademind_oauth_state"
+	maxJSONRequestBytes    = 4 << 10
 )
 
 type Server struct {
@@ -46,7 +48,6 @@ type GoogleAuthConfig struct {
 	Authenticator   identity.GoogleAuthenticator
 	Sessions        *identity.SessionManager
 	Accounts        paper.AccountRepository
-	Watchlists      paper.WatchlistRepository
 	SuccessRedirect string
 	SecureCookies   bool
 }
@@ -88,9 +89,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(googleAuthCallbackPath, s.googleAuthCallback)
 	mux.HandleFunc("/api/v1/me", s.me)
 	mux.HandleFunc(accountPath, s.account)
+	mux.HandleFunc(accountActivityPath, s.activity)
 	mux.HandleFunc(ordersPath, s.orders)
-	mux.HandleFunc(watchlistsPath, s.watchlists)
-	mux.HandleFunc(watchlistsPath+"/", s.watchlistSymbols)
 	mux.HandleFunc("/api/v1/auth/logout", s.logout)
 	return s.securityHeaders(s.cors(s.recoverPanics(mux)))
 }
@@ -251,7 +251,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 			if _, allowed := s.allowedOrigins[origin]; allowed {
 				writer.Header().Set("Access-Control-Allow-Origin", origin)
 				writer.Header().Set("Vary", "Origin")
-				writer.Header().Set("Access-Control-Allow-Methods", http.MethodGet+", "+http.MethodPost+", "+http.MethodDelete+", "+http.MethodOptions)
+				writer.Header().Set("Access-Control-Allow-Methods", http.MethodGet+", "+http.MethodPost+", "+http.MethodOptions)
 				writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 				writer.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
@@ -303,6 +303,21 @@ func writeError(writer http.ResponseWriter, status int, message string) {
 	writeJSON(writer, status, map[string]string{
 		"error": message,
 	})
+}
+
+func decodeRequestJSON(writer http.ResponseWriter, request *http.Request, destination any) bool {
+	request.Body = http.MaxBytesReader(writer, request.Body, maxJSONRequestBytes)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		writeError(writer, http.StatusBadRequest, "request body is invalid")
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(writer, http.StatusBadRequest, "request body must contain one JSON object")
+		return false
+	}
+	return true
 }
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {

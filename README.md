@@ -53,6 +53,17 @@ Massive credentials are never sent to web or mobile clients.
    `go run ./cmd/ticker-sync -scope XNAS:CS -pages 5` to import up to five
    NASDAQ common-stock pages in one invocation.
 
+5. Populate the local quote store:
+
+   ```sh
+   go run ./cmd/quote-sync
+   ```
+
+   This fetches one grouped end-of-day request from Massive covering every
+   symbol and upserts it into Postgres. Run it once after each trading day
+   (schedule it, for example daily after market close) so `/api/v1/quotes`
+   never has to call Massive on the request path.
+
 ## Web dashboard
 
 Start the API first, then in a second terminal:
@@ -82,37 +93,41 @@ curl --cookie "trademind_session=..." \
   --header "Content-Type: application/json" \
   --data '{"side":"sell","symbol":"AAPL","quantity":1}' \
   http://localhost:8080/api/v1/orders
+curl --cookie "trademind_session=..." \
+  "http://localhost:8080/api/v1/orders?limit=25&offset=0"
 ```
 
-`GET /api/v1/quotes/{symbol}` requests Massive's free-tier previous-day bar
-endpoint from the backend and returns the previous trading day's close, change,
-and timestamp metadata. It requires `MASSIVE_API_KEY`.
-
-`GET /api/v1/quotes?symbols=AAPL,MSFT,NVDA` returns up to 12 unique, valid US
-equity quotes in request order. Batch requests use one cached grouped
-end-of-day market-data request rather than one upstream request per symbol.
+`GET /api/v1/quotes/{symbol}` and `GET /api/v1/quotes?symbols=AAPL,MSFT,NVDA`
+return the previous trading day's close, change, and timestamp metadata for up
+to 12 unique, valid US equity symbols. When `DATABASE_URL` is set, both read
+from the local quote store populated by `quote-sync` and never call Massive in
+the user request path. Without `DATABASE_URL`, the API falls back to calling
+Massive live (subject to its rate limits); run `quote-sync` and set
+`DATABASE_URL` to avoid that.
 
 `GET /api/v1/tickers` searches the local active instrument catalog and never
 calls Massive in the user request path. It accepts an optional `search` term
 and returns up to 12 tickers with their company names; run `ticker-sync` to
 populate it before using the endpoint.
 
-This development endpoint is end-of-day only. Before launch, replace it with
+This development data is end-of-day only. Before launch, replace it with
 Massive's real-time snapshot or WebSocket feed under an appropriately licensed
 plan.
 
 When `DATABASE_URL` is set, the API applies its initial paper-account schema on
 startup. A successful Google sign-in then creates one paper account with
 $100,000.00 in virtual cash. Signed-in users can retrieve that account with
-`GET /api/v1/account`, including any open paper positions.
+`GET /api/v1/account`, including any open paper positions, and their filled
+trades with `GET /api/v1/orders`.
 
 ## Instrument catalog synchronization
 
-TradeMind will keep a local PostgreSQL catalog of active and historical US
-instruments. This is reference data, not a cache of quotes: ticker search,
-symbol validation, and watchlist/order symbol validation will query the local
-catalog, while quote and historical-price requests will continue to use the
-market-data provider.
+TradeMind keeps a local PostgreSQL catalog of active and historical US
+instruments. This is reference data, not a cache of quotes: ticker search
+and order symbol validation query the local
+catalog. Quotes are served from a separate local store (see `quote-sync`
+above) populated from the market-data provider on a schedule, not fetched live
+per request.
 
 ### Initial coverage
 
@@ -146,9 +161,8 @@ the universe can expand later without a schema change.
    relevant source scope. Never delete catalog rows merely because an
    individual page, exchange request, or entire run failed. Persist a sync-run
    status and counts so a failed or partial run is visible and can be retried.
-5. Update watchlist and future order validation to accept only active
-   instruments in the initial universe. Existing watchlist symbols must remain
-   readable even if the corresponding listing later becomes inactive.
+5. Update order validation to accept only active
+   instruments in the initial universe.
 6. Test pagination, exchange/type filtering, normalization, idempotent
    upserts, delisting, partial-run safety, and local endpoint search. Emit
    structured logs and metrics for run duration, pages, inserts, updates,
@@ -158,20 +172,6 @@ The sync job requires `MASSIVE_API_KEY` and must respect the selected Massive
 plan's reference-data entitlements and rate limits. It should use the
 provider's `next_url` pagination cursor rather than attempting to retrieve the
 entire universe in one request.
-
-Signed-in users can also organize US equity symbols in persistent watchlists:
-
-```sh
-curl --cookie "trademind_session=..." http://localhost:8080/api/v1/watchlists
-curl --cookie "trademind_session=..." \
-  --header "Content-Type: application/json" \
-  --data '{"name":"Long-term ideas"}' \
-  http://localhost:8080/api/v1/watchlists
-curl --cookie "trademind_session=..." \
-  --header "Content-Type: application/json" \
-  --data '{"symbol":"AAPL"}' \
-  http://localhost:8080/api/v1/watchlists/{watchlist_id}/symbols
-```
 
 ## Paper-order fill rules
 
@@ -183,7 +183,11 @@ balanced cash-ledger transaction. Completed orders are applied to FIFO position
 lots, preserving cost basis and realized P&L at cent precision.
 
 `POST /api/v1/orders` now accepts authenticated market buy and sell orders with
-an order side, stock symbol, and whole-share quantity. In development, orders
+an order side, stock symbol, and whole-share quantity. `GET /api/v1/orders`
+returns the signed-in user's filled orders newest first, including fill price,
+cash impact, and realized P&L on sells. It accepts `limit` (1–200, default 50)
+and `offset` (0-based) and includes `total` so clients can paginate the full
+history. In development, orders
 execute against the latest delayed quote returned by the configured
 market-data provider, using the quote price when bid and ask data are
 unavailable.

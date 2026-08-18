@@ -1,0 +1,136 @@
+.page {
+  background: #fffdf8;
+  color: #12251f;
+  min-height: 100vh;
+  padding: 24px 32px;
+}
+
+.intro {
+  margin: 72px auto 34px;
+  max-width: 960px;
+}
+
+.eyebrow {
+  color: #37775d;
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.intro h1 {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 12px 0 14px;
+}
+
+.description {
+  color: #52635b;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  max-width: 560px;
+}
+
+.error {
+  color: #a42b36;
+  margin: 0 auto 20px;
+  max-width: 960px;
+}
+
+.card {
+  background: #f1f5f1;
+  border-radius: 20px;
+  margin: 16px auto 0;
+  max-width: 960px;
+  padding: 28px;
+}
+
+.card h2 {
+  font-size: 1.35rem;
+  letter-spacing: -0.04em;
+  margin-bottom: 18px;
+}
+
+.pagination {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.pageStatus {
+  color: #5d7468;
+  font-size: 0.85rem;
+}
+
+.pageActions {
+  display: flex;
+  gap: 10px;
+}
+
+.pageButton,
+.pageButtonDisabled {
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 10px 16px;
+}
+
+.pageButton {
+  background: #12251f;
+  color: #fffdf8;
+}
+
+.pageButtonDisabled {
+  background: #dce7df;
+  color: #75867d;
+}
+
+.loading {
+  color: #5d7468;
+  margin: 140px auto;
+  max-width: 960px;
+}
+
+.emptyState {
+  margin: 100px auto 0;
+  max-width: 560px;
+  text-align: left;
+}
+
+.emptyState h1 {
+  font-size: clamp(2.2rem, 5vw, 3.2rem);
+  letter-spacing: -0.05em;
+  margin: 12px 0 24px;
+}
+
+.primaryAction {
+  background: #12251f;
+  border-radius: 999px;
+  color: #fffdf8;
+  display: inline-block;
+  font-weight: 700;
+  padding: 14px 22px;
+}
+
+.disclosure {
+  border-top: 1px solid #dce7df;
+  color: #75867d;
+  font-size: 0.78rem;
+  margin: 40px auto 0;
+  max-width: 960px;
+  padding: 24px 0;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 20px;
+  }
+
+  .pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -18,14 +18,17 @@ import (
 //go:embed migrations/0001_paper_accounts.sql
 var initialSchema string
 
-//go:embed migrations/0002_watchlists.sql
-var watchlistSchema string
-
 //go:embed migrations/0003_paper_positions.sql
 var positionSchema string
 
 //go:embed migrations/0004_paper_position_lots.sql
 var positionLotSchema string
+
+//go:embed migrations/0005_orders.sql
+var orderSchema string
+
+//go:embed migrations/0006_drop_watchlists.sql
+var dropWatchlistSchema string
 
 type PostgresStore struct {
 	pool  *pgxpool.Pool
@@ -50,10 +53,6 @@ func OpenPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore,
 		pool.Close()
 		return nil, fmt.Errorf("apply paper-account schema: %w", err)
 	}
-	if _, err := pool.Exec(ctx, watchlistSchema); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("apply watchlist schema: %w", err)
-	}
 	if _, err := pool.Exec(ctx, positionSchema); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("apply paper-position schema: %w", err)
@@ -61,6 +60,14 @@ func OpenPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore,
 	if _, err := pool.Exec(ctx, positionLotSchema); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("apply paper-position-lot schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, orderSchema); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("apply paper-order schema: %w", err)
+	}
+	if _, err := pool.Exec(ctx, dropWatchlistSchema); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("drop watchlist schema: %w", err)
 	}
 
 	return &PostgresStore{
@@ -218,14 +225,20 @@ func (s *PostgresStore) ApplyOrderFill(ctx context.Context, fill OrderFill) erro
 		return err
 	}
 
+	var realizedPnL *Money
 	if fill.Order.Side == OrderSideBuy {
 		if err := applyBuyOrderFill(ctx, tx, fill); err != nil {
 			return err
 		}
 	} else {
-		if err := applySellOrderFill(ctx, tx, fill); err != nil {
+		realized, err := applySellOrderFill(ctx, tx, fill)
+		if err != nil {
 			return err
 		}
+		realizedPnL = &realized
+	}
+	if err := insertFilledOrder(ctx, tx, fill, realizedPnL); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit order fill: %w", err)
@@ -233,157 +246,46 @@ func (s *PostgresStore) ApplyOrderFill(ctx context.Context, fill OrderFill) erro
 	return nil
 }
 
-func (s *PostgresStore) ListWatchlists(ctx context.Context, userID string) ([]Watchlist, error) {
+func (s *PostgresStore) ListActivity(ctx context.Context, userID string, limit int) ([]LedgerActivityEntry, error) {
 	if strings.TrimSpace(userID) == "" {
 		return nil, fmt.Errorf("%w: user ID is required", ErrInvalidTransaction)
+	}
+	if limit <= 0 {
+		limit = 50
 	}
 
 	rows, err := s.pool.Query(
 		ctx,
-		`SELECT watchlists.id, watchlists.user_id, watchlists.name, watchlists.created_at,
-			        symbols.symbol, symbols.added_at
-			 FROM watchlists
-			 LEFT JOIN watchlist_symbols AS symbols ON symbols.watchlist_id = watchlists.id
-			 WHERE watchlists.user_id = $1
-			 ORDER BY watchlists.created_at DESC, symbols.added_at ASC`,
+		`SELECT entries.transaction_id, entries.occurred_at, entries.description, entries.amount_cents
+		 FROM cash_ledger_entries AS entries
+		 JOIN paper_accounts AS accounts ON accounts.id = entries.account_id
+		 WHERE accounts.user_id = $1 AND entries.asset = $2
+		 ORDER BY entries.occurred_at DESC, entries.transaction_id DESC
+		 LIMIT $3`,
 		userID,
+		USD,
+		limit,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("list watchlists: %w", err)
+		return nil, fmt.Errorf("list account activity: %w", err)
 	}
 	defer rows.Close()
 
-	watchlists := make([]Watchlist, 0)
-	byID := make(map[string]int)
+	activity := make([]LedgerActivityEntry, 0)
 	for rows.Next() {
-		watchlist := Watchlist{Symbols: []WatchlistSymbol{}}
-		var symbol *string
-		var addedAt *time.Time
-		if err := rows.Scan(
-			&watchlist.ID,
-			&watchlist.UserID,
-			&watchlist.Name,
-			&watchlist.CreatedAt,
-			&symbol,
-			&addedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan watchlist: %w", err)
+		var entry LedgerActivityEntry
+		var amount int64
+		if err := rows.Scan(&entry.TransactionID, &entry.OccurredAt, &entry.Description, &amount); err != nil {
+			return nil, fmt.Errorf("scan account activity: %w", err)
 		}
-		watchlist.CreatedAt = watchlist.CreatedAt.UTC()
-
-		index, exists := byID[watchlist.ID]
-		if !exists {
-			index = len(watchlists)
-			byID[watchlist.ID] = index
-			watchlists = append(watchlists, watchlist)
-		}
-		if symbol != nil && addedAt != nil {
-			watchlists[index].Symbols = append(watchlists[index].Symbols, WatchlistSymbol{
-				Symbol:  *symbol,
-				AddedAt: addedAt.UTC(),
-			})
-		}
+		entry.OccurredAt = entry.OccurredAt.UTC()
+		entry.AmountCents = Money(amount)
+		activity = append(activity, entry)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate watchlists: %w", err)
+		return nil, fmt.Errorf("iterate account activity: %w", err)
 	}
-	return watchlists, nil
-}
-
-func (s *PostgresStore) CreateWatchlist(ctx context.Context, userID, name string) (Watchlist, error) {
-	if strings.TrimSpace(userID) == "" {
-		return Watchlist{}, fmt.Errorf("%w: user ID is required", ErrInvalidTransaction)
-	}
-	name, err := validateWatchlistName(name)
-	if err != nil {
-		return Watchlist{}, err
-	}
-	id, err := s.newID("watchlist")
-	if err != nil {
-		return Watchlist{}, fmt.Errorf("generate watchlist ID: %w", err)
-	}
-	watchlist := Watchlist{
-		ID:        id,
-		UserID:    userID,
-		Name:      name,
-		Symbols:   []WatchlistSymbol{},
-		CreatedAt: s.now().UTC(),
-	}
-	if _, err := s.pool.Exec(
-		ctx,
-		`INSERT INTO watchlists (id, user_id, name, created_at) VALUES ($1, $2, $3, $4)`,
-		watchlist.ID,
-		watchlist.UserID,
-		watchlist.Name,
-		watchlist.CreatedAt,
-	); err != nil {
-		return Watchlist{}, fmt.Errorf("create watchlist: %w", err)
-	}
-	return watchlist, nil
-}
-
-func (s *PostgresStore) AddWatchlistSymbol(ctx context.Context, userID, watchlistID, symbol string) (WatchlistSymbol, error) {
-	if strings.TrimSpace(userID) == "" || strings.TrimSpace(watchlistID) == "" || strings.TrimSpace(symbol) == "" {
-		return WatchlistSymbol{}, fmt.Errorf("%w: user ID, watchlist ID, and symbol are required", ErrInvalidTransaction)
-	}
-
-	watchlistSymbol := WatchlistSymbol{Symbol: symbol, AddedAt: s.now().UTC()}
-	command, err := s.pool.Exec(
-		ctx,
-		`INSERT INTO watchlist_symbols (watchlist_id, symbol, added_at)
-			 SELECT id, $3, $4 FROM watchlists WHERE id = $1 AND user_id = $2`,
-		watchlistID,
-		userID,
-		watchlistSymbol.Symbol,
-		watchlistSymbol.AddedAt,
-	)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return WatchlistSymbol{}, fmt.Errorf("%w: %s", ErrDuplicateWatchlistSymbol, symbol)
-		}
-		return WatchlistSymbol{}, fmt.Errorf("add watchlist symbol: %w", err)
-	}
-	if command.RowsAffected() == 0 {
-		return WatchlistSymbol{}, ErrWatchlistNotFound
-	}
-	return watchlistSymbol, nil
-}
-
-func (s *PostgresStore) RemoveWatchlistSymbol(ctx context.Context, userID, watchlistID, symbol string) error {
-	if strings.TrimSpace(userID) == "" || strings.TrimSpace(watchlistID) == "" || strings.TrimSpace(symbol) == "" {
-		return fmt.Errorf("%w: user ID, watchlist ID, and symbol are required", ErrInvalidTransaction)
-	}
-
-	command, err := s.pool.Exec(
-		ctx,
-		`DELETE FROM watchlist_symbols
-			 WHERE watchlist_id = $1
-			   AND symbol = $3
-			   AND EXISTS (
-			       SELECT 1 FROM watchlists WHERE id = $1 AND user_id = $2
-			   )`,
-		watchlistID,
-		userID,
-		symbol,
-	)
-	if err != nil {
-		return fmt.Errorf("remove watchlist symbol: %w", err)
-	}
-	if command.RowsAffected() == 0 {
-		var exists bool
-		if err := s.pool.QueryRow(
-			ctx,
-			`SELECT EXISTS(SELECT 1 FROM watchlists WHERE id = $1 AND user_id = $2)`,
-			watchlistID,
-			userID,
-		).Scan(&exists); err != nil {
-			return fmt.Errorf("check watchlist ownership: %w", err)
-		}
-		if !exists {
-			return ErrWatchlistNotFound
-		}
-	}
-	return nil
+	return activity, nil
 }
 
 func queryAccount(ctx context.Context, tx pgx.Tx, userID string) (PaperAccount, error) {
@@ -471,7 +373,7 @@ func applyBuyOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 	return nil
 }
 
-func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
+func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) (Money, error) {
 	lotRows, err := tx.Query(
 		ctx,
 		`SELECT id, quantity, cost_per_share_cents
@@ -483,7 +385,7 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 		fill.Order.Symbol,
 	)
 	if err != nil {
-		return fmt.Errorf("load paper position lots: %w", err)
+		return 0, fmt.Errorf("load paper position lots: %w", err)
 	}
 	defer lotRows.Close()
 
@@ -498,13 +400,13 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 		var lot storedLot
 		var costPerShare int64
 		if err := lotRows.Scan(&lot.id, &lot.quantity, &costPerShare); err != nil {
-			return fmt.Errorf("scan paper position lot: %w", err)
+			return 0, fmt.Errorf("scan paper position lot: %w", err)
 		}
 		lot.costPerShare = Money(costPerShare)
 		lots = append(lots, lot)
 	}
 	if err := lotRows.Err(); err != nil {
-		return fmt.Errorf("iterate paper position lots: %w", err)
+		return 0, fmt.Errorf("iterate paper position lots: %w", err)
 	}
 
 	remainingToSell := fill.Execution.Quantity
@@ -516,18 +418,18 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 		}
 		consumedLotCost, err := multipliedMoney(lots[index].costPerShare, consumed)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		consumedCost += consumedLotCost
 		lots[index].quantity -= consumed
 		remainingToSell -= consumed
 	}
 	if remainingToSell != 0 {
-		return ErrInsufficientPosition
+		return 0, ErrInsufficientPosition
 	}
 	proceeds, err := multipliedMoney(fill.Execution.PriceCents, fill.Execution.Quantity)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	realizedPnL := proceeds - consumedCost
 	remainingQuantity := int64(0)
@@ -539,7 +441,7 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 		remainingQuantity += lot.quantity
 		lotCost, err := multipliedMoney(lot.costPerShare, lot.quantity)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		remainingCostBasis += lotCost
 	}
@@ -555,10 +457,10 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 		fill.Order.Symbol,
 	).Scan(&currentRealizedPnL)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrInsufficientPosition
+		return 0, ErrInsufficientPosition
 	}
 	if err != nil {
-		return fmt.Errorf("load paper position summary: %w", err)
+		return 0, fmt.Errorf("load paper position summary: %w", err)
 	}
 	nextRealizedPnL := Money(currentRealizedPnL) + realizedPnL
 
@@ -569,7 +471,7 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 			fill.Order.AccountID,
 			fill.Order.Symbol,
 		); err != nil {
-			return fmt.Errorf("delete closed paper position: %w", err)
+			return 0, fmt.Errorf("delete closed paper position: %w", err)
 		}
 	} else {
 		if _, err := tx.Exec(
@@ -585,7 +487,7 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 			int64(remainingCostBasis),
 			int64(nextRealizedPnL),
 		); err != nil {
-			return fmt.Errorf("update paper position: %w", err)
+			return 0, fmt.Errorf("update paper position: %w", err)
 		}
 	}
 
@@ -599,7 +501,7 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 				lot.id,
 				lot.quantity,
 			); err != nil {
-				return fmt.Errorf("update paper position lot: %w", err)
+				return 0, fmt.Errorf("update paper position lot: %w", err)
 			}
 			continue
 		}
@@ -608,11 +510,181 @@ func applySellOrderFill(ctx context.Context, tx pgx.Tx, fill OrderFill) error {
 			`DELETE FROM paper_position_lots WHERE id = $1`,
 			lot.id,
 		); err != nil {
-			return fmt.Errorf("delete paper position lot: %w", err)
+			return 0, fmt.Errorf("delete paper position lot: %w", err)
 		}
 	}
 
+	return realizedPnL, nil
+}
+
+func insertFilledOrder(ctx context.Context, tx pgx.Tx, fill OrderFill, realizedPnL *Money) error {
+	var limitPrice any
+	if fill.Order.LimitPriceCents > 0 {
+		limitPrice = int64(fill.Order.LimitPriceCents)
+	}
+	if _, err := tx.Exec(
+		ctx,
+		`INSERT INTO paper_orders
+		 (id, account_id, idempotency_key, symbol, side, order_type, quantity, limit_price_cents, status, submitted_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		fill.Order.ID,
+		fill.Order.AccountID,
+		fill.Order.IdempotencyKey,
+		fill.Order.Symbol,
+		string(fill.Order.Side),
+		string(fill.Order.Type),
+		fill.Order.Quantity,
+		limitPrice,
+		string(fill.Order.Status),
+		fill.Order.SubmittedAt.UTC(),
+	); err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %s", ErrDuplicateTransaction, fill.Order.ID)
+		}
+		return fmt.Errorf("insert paper order: %w", err)
+	}
+
+	grossCents := fill.Execution.GrossCents
+	if grossCents == 0 && len(fill.CashTransaction.Postings) > 0 {
+		grossCents = fill.CashTransaction.Postings[0].Amount
+	}
+	cashTransactionID := fill.Execution.CashTransactionID
+	if cashTransactionID == "" {
+		cashTransactionID = fill.CashTransaction.ID
+	}
+	var realized any
+	if realizedPnL != nil {
+		realized = int64(*realizedPnL)
+	}
+	if _, err := tx.Exec(
+		ctx,
+		`INSERT INTO paper_executions
+		 (id, order_id, symbol, quantity, price_cents, occurred_at, quote_as_of, quote_source,
+		  gross_cents, realized_pnl_cents, cash_transaction_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		fill.Execution.ID,
+		fill.Order.ID,
+		fill.Execution.Symbol,
+		fill.Execution.Quantity,
+		int64(fill.Execution.PriceCents),
+		fill.Execution.OccurredAt.UTC(),
+		fill.Execution.QuoteAsOf.UTC(),
+		fill.Execution.QuoteSource,
+		int64(grossCents),
+		realized,
+		cashTransactionID,
+	); err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: %s", ErrDuplicateTransaction, fill.Execution.ID)
+		}
+		return fmt.Errorf("insert paper execution: %w", err)
+	}
 	return nil
+}
+
+func (s *PostgresStore) ListOrders(ctx context.Context, userID string, limit, offset int) (OrderHistoryPage, error) {
+	if strings.TrimSpace(userID) == "" {
+		return OrderHistoryPage{}, fmt.Errorf("%w: user ID is required", ErrInvalidTransaction)
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	if err := s.pool.QueryRow(
+		ctx,
+		`SELECT COUNT(*)
+		 FROM paper_orders AS orders
+		 JOIN paper_executions AS executions ON executions.order_id = orders.id
+		 JOIN paper_accounts AS accounts ON accounts.id = orders.account_id
+		 WHERE accounts.user_id = $1`,
+		userID,
+	).Scan(&total); err != nil {
+		return OrderHistoryPage{}, fmt.Errorf("count paper orders: %w", err)
+	}
+
+	rows, err := s.pool.Query(
+		ctx,
+		`SELECT orders.id, orders.account_id, orders.idempotency_key, orders.symbol,
+		        orders.side, orders.order_type, orders.quantity, orders.limit_price_cents,
+		        orders.status, orders.submitted_at,
+		        executions.id, executions.order_id, executions.symbol, executions.quantity,
+		        executions.price_cents, executions.occurred_at, executions.quote_as_of,
+		        executions.quote_source, executions.gross_cents, executions.realized_pnl_cents,
+		        executions.cash_transaction_id
+		 FROM paper_orders AS orders
+		 JOIN paper_executions AS executions ON executions.order_id = orders.id
+		 JOIN paper_accounts AS accounts ON accounts.id = orders.account_id
+		 WHERE accounts.user_id = $1
+		 ORDER BY executions.occurred_at DESC, executions.id DESC
+		 LIMIT $2 OFFSET $3`,
+		userID,
+		limit,
+		offset,
+	)
+	if err != nil {
+		return OrderHistoryPage{}, fmt.Errorf("list paper orders: %w", err)
+	}
+	defer rows.Close()
+
+	orders := make([]OrderHistoryEntry, 0)
+	for rows.Next() {
+		var entry OrderHistoryEntry
+		var limitPrice *int64
+		var priceCents int64
+		var grossCents int64
+		var realizedPnL *int64
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.AccountID,
+			&entry.IdempotencyKey,
+			&entry.Symbol,
+			&entry.Side,
+			&entry.Type,
+			&entry.Quantity,
+			&limitPrice,
+			&entry.Status,
+			&entry.SubmittedAt,
+			&entry.Execution.ID,
+			&entry.Execution.OrderID,
+			&entry.Execution.Symbol,
+			&entry.Execution.Quantity,
+			&priceCents,
+			&entry.Execution.OccurredAt,
+			&entry.Execution.QuoteAsOf,
+			&entry.Execution.QuoteSource,
+			&grossCents,
+			&realizedPnL,
+			&entry.Execution.CashTransactionID,
+		); err != nil {
+			return OrderHistoryPage{}, fmt.Errorf("scan paper order: %w", err)
+		}
+		if limitPrice != nil {
+			entry.LimitPriceCents = Money(*limitPrice)
+		}
+		entry.SubmittedAt = entry.SubmittedAt.UTC()
+		entry.Execution.PriceCents = Money(priceCents)
+		entry.Execution.OccurredAt = entry.Execution.OccurredAt.UTC()
+		entry.Execution.QuoteAsOf = entry.Execution.QuoteAsOf.UTC()
+		entry.Execution.GrossCents = Money(grossCents)
+		if realizedPnL != nil {
+			value := Money(*realizedPnL)
+			entry.Execution.RealizedPnLCents = &value
+		}
+		orders = append(orders, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return OrderHistoryPage{}, fmt.Errorf("iterate paper orders: %w", err)
+	}
+	return OrderHistoryPage{
+		Orders: orders,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
 }
 
 func insertTransaction(ctx context.Context, tx pgx.Tx, transaction Transaction) error {

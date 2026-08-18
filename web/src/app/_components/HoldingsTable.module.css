@@ -1,0 +1,51 @@
+.tableWrap {
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  padding: 14px 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th[scope="col"] {
+  color: #5d7468;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.table th[scope="row"] {
+  color: #12251f;
+  font-weight: 750;
+}
+
+.table th[scope="col"]:first-child,
+.table th[scope="row"] {
+  text-align: left;
+}
+
+.table tbody tr {
+  border-top: 1px solid #e6ede8;
+}
+
+.positive {
+  color: #17734c;
+}
+
+.negative {
+  color: #bd3745;
+}
+
+.empty {
+  color: #5d7468;
+  line-height: 1.5;
+}

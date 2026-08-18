@@ -4,48 +4,6 @@
   padding: 24px 32px;
 }
 
-.nav {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin: 0 auto;
-  max-width: 960px;
-}
-
-.accountMenu {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-}
-
-.brand {
-  color: #12251f;
-  font-size: 1.2rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-}
-
-.email {
-  color: #5d7468;
-  font-size: 0.85rem;
-}
-
-.signOut {
-  background: transparent;
-  border: 0;
-  color: #37775d;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  padding: 0;
-}
-
-.signOut:disabled {
-  color: #75867d;
-  cursor: progress;
-}
-
 .intro {
   max-width: 720px;
   padding: 104px 0 52px;
@@ -83,12 +41,12 @@
 .balanceGrid {
   display: grid;
   gap: 16px;
-  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .primaryBalance,
 .balanceCard,
-.marketCard,
+.holdingsCard,
 .nextStep,
 .accountUnavailable {
   border-radius: 20px;
@@ -130,13 +88,21 @@
   color: #5d7468;
 }
 
+.balanceCard span.positiveChange {
+  color: #17734c;
+}
+
+.balanceCard span.negativeChange {
+  color: #bd3745;
+}
+
 .accountUnavailable {
   background: #f8eee7;
   color: #12251f;
 }
 
 .accountUnavailable h2,
-.marketCard h2,
+.holdingsCard h2,
 .nextStep h2 {
   font-size: 1.55rem;
   letter-spacing: -0.045em;
@@ -154,11 +120,10 @@
 .workspace {
   display: grid;
   gap: 16px;
-  grid-template-columns: 1.4fr 1fr;
   margin-top: 16px;
 }
 
-.marketCard {
+.holdingsCard {
   background: #f1f5f1;
 }
 
@@ -166,34 +131,13 @@
   align-items: flex-start;
   display: flex;
   justify-content: space-between;
+  margin-bottom: 20px;
 }
 
 .textLink {
   color: #37775d;
   font-size: 0.88rem;
   font-weight: 700;
-}
-
-.quote {
-  align-items: end;
-  display: flex;
-  justify-content: space-between;
-  margin-top: 44px;
-}
-
-.symbol {
-  color: #5d7468;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.quote strong {
-  color: #12251f;
-  display: block;
-  font-size: clamp(2.2rem, 4vw, 3.4rem);
-  letter-spacing: -0.06em;
-  margin-top: 5px;
 }
 
 .positiveChange,
@@ -208,12 +152,6 @@
 
 .negativeChange {
   color: #bd3745;
-}
-
-.muted {
-  color: #5d7468;
-  line-height: 1.5;
-  margin-top: 44px;
 }
 
 .nextStep {
@@ -249,20 +187,11 @@
     padding: 20px;
   }
 
-  .nav {
-    gap: 12px;
-  }
-
-  .accountMenu {
-    gap: 12px;
-  }
-
   .intro {
     padding: 72px 0 40px;
   }
 
-  .balanceGrid,
-  .workspace {
+  .balanceGrid {
     grid-template-columns: 1fr;
   }
 
@@ -270,11 +199,10 @@
   .balanceCard strong {
     margin-top: 22px;
   }
+}
 
-  .quote {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 16px;
-    margin-top: 32px;
+@media (max-width: 1100px) {
+  .balanceGrid {
+    grid-template-columns: 1fr 1fr;
   }
 }
