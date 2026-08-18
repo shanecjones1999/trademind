@@ -10,13 +10,20 @@
 
 .table th,
 .table td {
+  font-variant-numeric: tabular-nums;
   padding: 14px 12px;
   text-align: right;
   white-space: nowrap;
 }
 
+.table td,
+.table th[scope="row"] {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
 .table th[scope="col"] {
-  color: #5d7468;
+  color: var(--subtle);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -24,8 +31,16 @@
 }
 
 .table th[scope="row"] {
-  color: #12251f;
+  color: var(--ink);
   font-weight: 750;
+}
+
+.table th[scope="row"] a {
+  color: var(--accent);
+}
+
+.table th[scope="row"] a:hover {
+  color: var(--ink);
 }
 
 .table th[scope="col"]:first-child,
@@ -34,18 +49,22 @@
 }
 
 .table tbody tr {
-  border-top: 1px solid #e6ede8;
+  border-top: 1px solid var(--line);
+}
+
+.table tbody tr:hover {
+  background: var(--card-strong);
 }
 
 .positive {
-  color: #17734c;
+  color: var(--gain);
 }
 
 .negative {
-  color: #bd3745;
+  color: var(--loss);
 }
 
 .empty {
-  color: #5d7468;
+  color: var(--subtle);
   line-height: 1.5;
 }

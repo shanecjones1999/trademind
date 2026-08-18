@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shanecjones1999/trademind/internal/market"
@@ -16,9 +17,10 @@ import (
 const maximumDelayedQuoteAge = 7 * 24 * time.Hour
 
 type createOrderRequest struct {
-	Side     string `json:"side"`
-	Symbol   string `json:"symbol"`
-	Quantity int64  `json:"quantity"`
+	Side           string `json:"side"`
+	Symbol         string `json:"symbol"`
+	Quantity       int64  `json:"quantity"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 type createOrderResponse struct {
@@ -106,6 +108,11 @@ func (s *Server) createOrder(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusBadRequest, "symbol is invalid")
 		return
 	}
+	idempotencyKey, err := parseIdempotencyKey(request, body.IdempotencyKey)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	snapshot, err := s.loadAccountSnapshot(request.Context(), session.Subject)
 	if err != nil {
@@ -129,7 +136,7 @@ func (s *Server) createOrder(writer http.ResponseWriter, request *http.Request) 
 	now := time.Now().UTC()
 	order, err := paper.NewOrder(paper.OrderRequest{
 		ID:             newOrderID(),
-		IdempotencyKey: newOrderID(),
+		IdempotencyKey: idempotencyKey,
 		AccountID:      snapshot.Account.ID,
 		Symbol:         symbol,
 		Side:           side,
@@ -197,6 +204,8 @@ func writeOrderError(writer http.ResponseWriter, err error) {
 		writeError(writer, http.StatusBadRequest, "order details are invalid")
 	case errors.Is(err, paper.ErrStaleQuote):
 		writeError(writer, http.StatusBadGateway, "this quote is too old to execute a paper trade")
+	case errors.Is(err, paper.ErrDuplicateTransaction):
+		writeError(writer, http.StatusConflict, "this order was already submitted")
 	case errors.Is(err, paper.ErrLimitNotEligible):
 		writeError(writer, http.StatusBadGateway, "market data is temporarily unavailable")
 	default:
@@ -254,6 +263,20 @@ func parseOrderSide(rawSide string) (paper.OrderSide, error) {
 	default:
 		return "", fmt.Errorf("invalid order side")
 	}
+}
+
+func parseIdempotencyKey(request *http.Request, bodyKey string) (string, error) {
+	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
+	if key == "" {
+		key = strings.TrimSpace(bodyKey)
+	}
+	if key == "" {
+		return newOrderID(), nil
+	}
+	if len(key) > 255 {
+		return "", errors.New("idempotency key must be 255 characters or fewer")
+	}
+	return key, nil
 }
 
 func availableQuantity(positions []paper.Position, symbol string) int64 {

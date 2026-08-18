@@ -1,0 +1,64 @@
+.page {
+  margin: 0 auto;
+  max-width: 640px;
+  padding: 80px 32px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.page h1 {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+  margin: 14px 0 16px;
+}
+
+.copy {
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 480px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.primary,
+.secondary {
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  padding: 14px 22px;
+}
+
+.primary {
+  background: var(--ink);
+  border: 0;
+  color: var(--ink-inverse);
+  cursor: pointer;
+  display: inline-block;
+}
+
+.primary:hover {
+  background: var(--accent);
+}
+
+.secondary {
+  background: transparent;
+  border: 1px solid var(--input-border);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.secondary:hover {
+  border-color: var(--ink);
+}

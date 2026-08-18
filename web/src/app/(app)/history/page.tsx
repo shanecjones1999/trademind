@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Nav from "@/app/_components/Nav";
+import ErrorBanner from "@/app/_components/ErrorBanner";
+import PageSkeleton from "@/app/_components/PageSkeleton";
+import SignedOutGate from "@/app/_components/SignedOutGate";
 import TradeHistoryTable, {
   type TradeHistoryOrder,
 } from "@/app/_components/TradeHistoryTable";
+import { apiURL } from "@/lib/api";
+import { useSession } from "@/lib/session";
 import styles from "./page.module.css";
 
 type OrdersResponse = {
@@ -16,7 +20,6 @@ type OrdersResponse = {
   offset: number;
 };
 
-const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 const pageSize = 25;
 
 function historyHref(page: number) {
@@ -38,9 +41,12 @@ export default function HistoryPage() {
   return (
     <Suspense
       fallback={
-        <main className={styles.page}>
-          <Nav active="history" />
-          <p className={styles.loading}>Loading your trade history...</p>
+        <main>
+          <header className={styles.intro}>
+            <p className={styles.eyebrow}>Your paper trades</p>
+            <h1>History</h1>
+          </header>
+          <PageSkeleton cards={1} />
         </main>
       }
     >
@@ -50,55 +56,50 @@ export default function HistoryPage() {
 }
 
 function HistoryContent() {
+  const { status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const page = pageFromSearch(searchParams.get("page"));
-  const [isSignedIn, setIsSignedIn] = useState(true);
   const [orders, setOrders] = useState<TradeHistoryOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function load() {
-      setError(null);
-      try {
-        const offset = (page - 1) * pageSize;
-        const response = await fetch(
-          `${apiURL}/api/v1/orders?limit=${pageSize}&offset=${offset}`,
-          {
-            credentials: "include",
-            signal: controller.signal,
-          },
-        );
-        if (response.status === 401) {
-          setIsSignedIn(false);
-          return;
-        }
-        if (!response.ok) {
-          setError("We could not load your trade history.");
-          return;
-        }
-        setIsSignedIn(true);
-        const payload = (await response.json()) as OrdersResponse;
-        setOrders(payload.orders ?? []);
-        setTotal(payload.total ?? 0);
-      } catch {
-        if (!controller.signal.aborted) {
-          setError("TradeMind could not reach the paper-trading service.");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
+  const load = useCallback(async () => {
+    if (status !== "signedIn") {
+      return;
     }
+    setError(null);
+    setIsLoading(true);
+    try {
+      const offset = (page - 1) * pageSize;
+      const response = await fetch(`${apiURL}/api/v1/orders?limit=${pageSize}&offset=${offset}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        setError("We could not load your trade history.");
+        return;
+      }
+      const payload = (await response.json()) as OrdersResponse;
+      setOrders(payload.orders ?? []);
+      setTotal(payload.total ?? 0);
+    } catch {
+      setError("TradeMind could not reach the paper-trading service.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, status]);
 
+  useEffect(() => {
+    if (status === "loading") {
+      return;
+    }
+    if (status === "signedOut") {
+      setIsLoading(false);
+      return;
+    }
     void load();
-    return () => controller.abort();
-  }, [page]);
+  }, [load, status]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
@@ -109,28 +110,20 @@ function HistoryContent() {
     router.replace(historyHref(pageCount));
   }, [isLoading, page, pageCount, router, total]);
 
-  if (isLoading) {
+  if (status === "loading" || (status === "signedIn" && isLoading && orders.length === 0 && !error)) {
     return (
-      <main className={styles.page}>
-        <Nav active="history" />
-        <p className={styles.loading}>Loading your trade history...</p>
+      <main>
+        <header className={styles.intro}>
+          <p className={styles.eyebrow}>Your paper trades</p>
+          <h1>History</h1>
+        </header>
+        <PageSkeleton cards={1} />
       </main>
     );
   }
 
-  if (!isSignedIn) {
-    return (
-      <main className={styles.page}>
-        <Nav active="history" />
-        <section className={styles.emptyState}>
-          <p className={styles.eyebrow}>Paper trading</p>
-          <h1>Sign in to see your trade history.</h1>
-          <a className={styles.primaryAction} href={`${apiURL}/api/v1/auth/google`}>
-            Sign in with Google
-          </a>
-        </section>
-      </main>
-    );
+  if (status === "signedOut") {
+    return <SignedOutGate next="/history" title="Sign in to see your trade history." />;
   }
 
   const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -139,19 +132,16 @@ function HistoryContent() {
   const hasNext = page < pageCount && total > 0;
 
   return (
-    <main className={styles.page}>
-      <Nav active="history" />
-
+    <main>
       <header className={styles.intro}>
         <p className={styles.eyebrow}>Your paper trades</p>
         <h1>History</h1>
         <p className={styles.description}>
-          Filled market orders for this account, newest first. Realized P&amp;L
-          is shown on sells.
+          Filled market orders for this account, newest first. Realized P&amp;L is shown on sells.
         </p>
       </header>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
       <section className={styles.card}>
         <h2>Trade history</h2>
@@ -180,10 +170,6 @@ function HistoryContent() {
           </nav>
         ) : null}
       </section>
-
-      <p className={styles.disclosure}>
-        TradeMind is a simulated trading experience, not investment advice.
-      </p>
     </main>
   );
 }

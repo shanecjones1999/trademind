@@ -101,6 +101,7 @@ func TestOrdersRequireAuthenticationAndFillPaperOrders(t *testing.T) {
 	}
 	orderRequest := httptest.NewRequest(http.MethodPost, ordersPath, strings.NewReader(`{"symbol":"aapl","quantity":2}`))
 	orderRequest.Header.Set("Content-Type", "application/json")
+	orderRequest.Header.Set("Idempotency-Key", "header-key-1")
 	orderRequest.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionToken})
 	orderResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(orderResponse, orderRequest)
@@ -112,6 +113,9 @@ func TestOrdersRequireAuthenticationAndFillPaperOrders(t *testing.T) {
 	}
 	if accounts.appliedFill.Order.Quantity != 2 {
 		t.Fatalf("applied quantity = %d, want 2", accounts.appliedFill.Order.Quantity)
+	}
+	if accounts.appliedFill.Order.IdempotencyKey != "header-key-1" {
+		t.Fatalf("idempotency key = %q, want header-key-1", accounts.appliedFill.Order.IdempotencyKey)
 	}
 	if len(accounts.snapshot.Positions) != 1 || accounts.snapshot.Positions[0].Quantity != 2 {
 		t.Fatalf("positions = %#v, want one 2-share position", accounts.snapshot.Positions)
@@ -612,8 +616,54 @@ func TestGoogleAuthenticationRejectsMismatchedState(t *testing.T) {
 	callbackRequest.AddCookie(stateCookie)
 	callbackResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(callbackResponse, callbackRequest)
-	if callbackResponse.Code != http.StatusBadRequest {
-		t.Fatalf("callback status = %d, want %d", callbackResponse.Code, http.StatusBadRequest)
+	if callbackResponse.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want %d", callbackResponse.Code, http.StatusFound)
+	}
+	if location := callbackResponse.Header().Get("Location"); location != "http://localhost:3000/?auth=error" {
+		t.Fatalf("location = %q, want web auth error redirect", location)
+	}
+}
+
+func TestGoogleAuthenticationHonorsNextPath(t *testing.T) {
+	sessions, err := identity.NewSessionManager("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("create sessions: %v", err)
+	}
+	authenticator := &fakeGoogleAuthenticator{
+		profile: identity.Profile{
+			Subject: "google-subject",
+			Email:   "user@example.com",
+			Name:    "Example User",
+		},
+	}
+	server := NewServer(
+		stubQuotes{},
+		nil,
+		slog.Default(),
+		WithGoogleAuth(GoogleAuthConfig{
+			Authenticator:   authenticator,
+			Sessions:        sessions,
+			SuccessRedirect: "http://localhost:3000/dashboard",
+		}),
+	)
+
+	startRequest := httptest.NewRequest(http.MethodGet, googleAuthStartPath+"?next=/market%3Fsymbol%3DAAPL", nil)
+	startResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(startResponse, startRequest)
+	stateCookie := cookieNamed(t, startResponse.Result().Cookies(), stateCookieName)
+	nextCookie := cookieNamed(t, startResponse.Result().Cookies(), nextCookieName)
+
+	callbackURL := googleAuthCallbackPath + "?state=" + url.QueryEscape(authenticator.state) + "&code=authorization-code"
+	callbackRequest := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+	callbackRequest.AddCookie(stateCookie)
+	callbackRequest.AddCookie(nextCookie)
+	callbackResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(callbackResponse, callbackRequest)
+	if callbackResponse.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want %d", callbackResponse.Code, http.StatusFound)
+	}
+	if location := callbackResponse.Header().Get("Location"); location != "http://localhost:3000/market?symbol=AAPL" {
+		t.Fatalf("location = %q, want market return path", location)
 	}
 }
 

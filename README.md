@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="TradeMind.svg#gh-light-mode-only" alt="TradeMind" width="220" />
+  <img src="TradeMind-dark.svg#gh-dark-mode-only" alt="TradeMind" width="220" />
+</p>
+
 # TradeMind API
 
 The first backend service for TradeMind's paper-trading platform. It provides a

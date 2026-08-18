@@ -1,0 +1,88 @@
+.intro {
+  padding: 28px 0 36px;
+}
+
+.intro h1 {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 12px 0 14px;
+}
+
+.description {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.5;
+  max-width: 560px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.balanceGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.balanceCard,
+.card {
+  background: var(--card-strong);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+.card {
+  background: var(--card);
+  margin-top: 16px;
+  padding: 28px;
+}
+
+.balanceCard p {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.balanceCard strong {
+  display: block;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: clamp(1.6rem, 2.6vw, 2.2rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 20px 0 8px;
+}
+
+.balanceCard span {
+  color: var(--subtle);
+  font-size: 0.83rem;
+}
+
+.card h2 {
+  font-size: 1.35rem;
+  letter-spacing: -0.04em;
+  margin-bottom: 18px;
+}
+
+.positiveChange {
+  color: var(--gain);
+}
+
+.negativeChange {
+  color: var(--loss);
+}
+
+.freshness {
+  margin: -8px 0 16px;
+}
+
+@media (max-width: 700px) {
+  .balanceGrid {
+    grid-template-columns: 1fr;
+  }
+}

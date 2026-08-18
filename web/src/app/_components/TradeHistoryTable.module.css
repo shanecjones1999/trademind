@@ -24,9 +24,14 @@
 }
 
 .table th[scope="row"] {
-  color: #5d7468;
+  color: var(--subtle);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-weight: 600;
   text-align: left;
+}
+
+.table tbody tr:hover {
+  background: var(--card-strong);
 }
 
 .table th[scope="col"]:first-child,

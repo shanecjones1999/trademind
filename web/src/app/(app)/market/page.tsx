@@ -1,9 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import Nav from "@/app/_components/Nav";
+import Link from "next/link";
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import PageSkeleton from "@/app/_components/PageSkeleton";
+import QuoteMeta from "@/app/_components/QuoteMeta";
+import { apiURL, errorMessageFromResponse, googleAuthURL, newIdempotencyKey } from "@/lib/api";
 import { currency, currencyFromCents, type Quote } from "@/lib/market";
+import { usCashHoursStatus } from "@/lib/quote-meta";
 import type { Position } from "@/lib/portfolio";
+import { useSession } from "@/lib/session";
 import styles from "./page.module.css";
 
 type Ticker = {
@@ -44,43 +50,85 @@ type Receipt = {
   occurredAt: string;
 };
 
-const apiURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 const tickerListLimit = 12;
 
-async function errorMessageFromResponse(response: Response): Promise<string | null> {
-  try {
-    const payload = (await response.json()) as { error?: unknown };
-    if (typeof payload.error !== "string") {
-      return null;
-    }
-    const message = payload.error.trim();
-    if (!message) {
-      return null;
-    }
-    return message.charAt(0).toUpperCase() + message.slice(1);
-  } catch {
-    return null;
-  }
+export default function MarketPage() {
+  return (
+    <Suspense
+      fallback={
+        <main>
+          <header className={styles.content}>
+            <p className={styles.eyebrow}>Market data</p>
+            <h1>Browse prices, then trade.</h1>
+          </header>
+          <PageSkeleton cards={1} />
+        </main>
+      }
+    >
+      <MarketContent />
+    </Suspense>
+  );
 }
 
-export default function MarketPage() {
+function MarketContent() {
+  const { status } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedSymbol = searchParams.get("symbol");
+  const tradePanelRef = useRef<HTMLElement | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
-  const [isSignedIn, setIsSignedIn] = useState(true);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderQuantity, setOrderQuantity] = useState("1");
   const [orderError, setOrderError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [isReviewing, setIsReviewing] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
   const [tickerSearch, setTickerSearch] = useState("");
   const [tickerSort, setTickerSort] = useState<"symbol" | "change">("symbol");
   const [tickers, setTickers] = useState<Ticker[]>([]);
   const [featuredQuotes, setFeaturedQuotes] = useState<Quote[]>([]);
   const [featuredError, setFeaturedError] = useState<string | null>(null);
   const [isLoadingFeatured, setIsLoadingFeatured] = useState(true);
+
+  const lookupSymbol = useCallback(async (symbol: string) => {
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    if (!normalizedSymbol) {
+      return;
+    }
+    setIsLoadingQuote(true);
+    setMessage(null);
+    setOrderError(null);
+    setReceipt(null);
+    setIsReviewing(false);
+    setIdempotencyKey(newIdempotencyKey());
+    try {
+      const response = await fetch(`${apiURL}/api/v1/quotes/${encodeURIComponent(normalizedSymbol)}`);
+      if (response.status === 404) {
+        setQuote(null);
+        setMessage(`We could not find "${normalizedSymbol}".`);
+        return;
+      }
+      if (!response.ok) {
+        setQuote(null);
+        setMessage("Market data is temporarily unavailable. Please try again.");
+        return;
+      }
+      setQuote((await response.json()) as Quote);
+      window.requestAnimationFrame(() => {
+        tradePanelRef.current?.focus();
+      });
+    } catch {
+      setQuote(null);
+      setMessage("TradeMind could not reach the market-data service.");
+    } finally {
+      setIsLoadingQuote(false);
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,7 +154,6 @@ export default function MarketPage() {
           setFeaturedQuotes([]);
           return;
         }
-
         const symbols = listedTickers.map(({ symbol }) => symbol).join(",");
         const quoteResponse = await fetch(`${apiURL}/api/v1/quotes?symbols=${symbols}`, {
           signal: controller.signal,
@@ -135,6 +182,10 @@ export default function MarketPage() {
   }, [tickerSearch]);
 
   useEffect(() => {
+    if (status !== "signedIn") {
+      setAccount(null);
+      return;
+    }
     const controller = new AbortController();
 
     async function loadAccount() {
@@ -143,17 +194,10 @@ export default function MarketPage() {
           credentials: "include",
           signal: controller.signal,
         });
-        if (response.status === 401) {
-          setIsSignedIn(false);
-          setAccount(null);
-          setAccountMessage(null);
-          return;
-        }
         if (!response.ok) {
           setAccountMessage("Paper buying power is temporarily unavailable.");
           return;
         }
-        setIsSignedIn(true);
         setAccountMessage(null);
         setAccount((await response.json()) as AccountSnapshot);
       } catch {
@@ -165,94 +209,57 @@ export default function MarketPage() {
 
     void loadAccount();
     return () => controller.abort();
-  }, []);
+  }, [status]);
 
-  async function lookupSymbol(symbol: string) {
-    const normalizedSymbol = symbol.trim();
-    if (!normalizedSymbol) {
+  useEffect(() => {
+    const symbol = requestedSymbol?.trim().toUpperCase() ?? "";
+    if (!symbol) {
       return;
     }
+    void lookupSymbol(symbol);
+  }, [lookupSymbol, requestedSymbol]);
 
-    setIsLoading(true);
-    setMessage(null);
-    setOrderError(null);
-    setReceipt(null);
-    try {
-      const response = await fetch(
-        `${apiURL}/api/v1/quotes/${encodeURIComponent(normalizedSymbol)}`,
-      );
-      if (response.status === 404) {
-        setQuote(null);
-        setMessage(`We could not find "${normalizedSymbol.toUpperCase()}".`);
-        return;
-      }
-      if (!response.ok) {
-        setQuote(null);
-        setMessage("Market data is temporarily unavailable. Please try again.");
-        return;
-      }
-      setQuote((await response.json()) as Quote);
-    } catch {
-      setQuote(null);
-      setMessage("TradeMind could not reach the market-data service.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function submitOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!quote) {
-      setOrderError("Select a stock before placing a paper trade.");
+  async function placeOrder() {
+    if (!quote || !account) {
       return;
     }
-
     const quantity = Number.parseInt(orderQuantity, 10);
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      setOrderError("Enter a whole-share quantity to trade.");
-      return;
-    }
-    if (!account) {
-      setOrderError(
-        isSignedIn
-          ? "Your buying power is still loading. Please try again."
-          : "Sign in to place a paper trade.",
-      );
-      return;
-    }
-
     setIsSubmittingOrder(true);
     setOrderError(null);
-    setReceipt(null);
     try {
       const response = await fetch(`${apiURL}/api/v1/orders`, {
-        body: JSON.stringify({ side: orderSide, symbol: quote.symbol, quantity }),
+        body: JSON.stringify({
+          side: orderSide,
+          symbol: quote.symbol,
+          quantity,
+          idempotency_key: idempotencyKey,
+        }),
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey,
+        },
         method: "POST",
       });
       if (response.status === 401) {
-        setIsSignedIn(false);
-        setAccount(null);
         setOrderError("Sign in to place a paper trade.");
         return;
       }
-      if (!response.ok) {
-        if (response.status === 409) {
-          setOrderError(
-            orderSide === "buy"
+      if (response.status === 409) {
+        const conflict = await errorMessageFromResponse(response);
+        setOrderError(
+          conflict?.toLowerCase().includes("already")
+            ? "That paper trade was already placed."
+            : orderSide === "buy"
               ? "You do not have enough virtual cash for that order."
               : "You do not own enough shares for that order.",
-          );
-          return;
-        }
-        setOrderError(
-          (await errorMessageFromResponse(response)) ??
-            "We could not place that paper trade.",
         );
         return;
       }
-
+      if (!response.ok) {
+        setOrderError((await errorMessageFromResponse(response)) ?? "We could not place that paper trade.");
+        return;
+      }
       const payload = (await response.json()) as OrderResponse;
       setAccount(payload.account);
       setReceipt({
@@ -262,11 +269,33 @@ export default function MarketPage() {
         priceCents: payload.fill.execution.price_cents,
         occurredAt: payload.fill.execution.occurred_at,
       });
+      setIsReviewing(false);
+      setIdempotencyKey(newIdempotencyKey());
     } catch {
       setOrderError("TradeMind could not reach the paper-trading service.");
     } finally {
       setIsSubmittingOrder(false);
     }
+  }
+
+  function handleOrderSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!quote) {
+      setOrderError("Select a stock before placing a paper trade.");
+      return;
+    }
+    const quantity = Number.parseInt(orderQuantity, 10);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      setOrderError("Enter a whole-share quantity to trade.");
+      return;
+    }
+    if (status !== "signedIn" || !account) {
+      setOrderError("Sign in to place a paper trade.");
+      return;
+    }
+    setReceipt(null);
+    setOrderError(null);
+    setIsReviewing(true);
   }
 
   const sortedTickers = [...tickers].sort((a, b) => {
@@ -280,13 +309,10 @@ export default function MarketPage() {
 
   const changeIsPositive = quote ? quote.day_change >= 0 : true;
   const buyingPower = account ? currencyFromCents(account.cash_balance_cents) : null;
-  const selectedPosition =
-    account?.positions.find((position) => position.symbol === quote?.symbol) ?? null;
+  const selectedPosition = account?.positions.find((position) => position.symbol === quote?.symbol) ?? null;
   const ownedShares = selectedPosition?.quantity ?? 0;
-
   const parsedQuantity = Number.parseInt(orderQuantity, 10);
-  const previewQuantity =
-    Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 0;
+  const previewQuantity = Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 0;
   const estimatedCostCents =
     quote && previewQuantity > 0 ? Math.round(quote.price * 100) * previewQuantity : 0;
   const projectedCashCents =
@@ -296,33 +322,23 @@ export default function MarketPage() {
         : account.cash_balance_cents + estimatedCostCents
       : null;
   const remainingShares =
-    previewQuantity > 0
-      ? orderSide === "buy"
-        ? ownedShares + previewQuantity
-        : ownedShares - previewQuantity
-      : null;
-  const projectedShares =
-    remainingShares === null ? null : Math.max(0, remainingShares);
-  const exceedsBuyingPower =
-    orderSide === "buy" && projectedCashCents !== null && projectedCashCents < 0;
-  const exceedsPosition =
-    orderSide === "sell" && remainingShares !== null && remainingShares < 0;
+    previewQuantity > 0 ? (orderSide === "buy" ? ownedShares + previewQuantity : ownedShares - previewQuantity) : null;
+  const exceedsBuyingPower = orderSide === "buy" && projectedCashCents !== null && projectedCashCents < 0;
+  const exceedsPosition = orderSide === "sell" && remainingShares !== null && remainingShares < 0;
+  const canSubmit = previewQuantity > 0 && !exceedsBuyingPower && !exceedsPosition;
 
   return (
-    <main className={styles.page}>
-      <Nav active="market" />
-
+    <main>
       <section className={styles.content}>
         <p className={styles.eyebrow}>Market data</p>
         <h1>Browse prices, then trade.</h1>
         <p className={styles.description}>
-          Search the US equity directory and select a stock to review the
-          latest available price and place a paper buy or sell.
+          Search the US equity directory and select a stock to review the latest available price
+          and place a paper buy or sell.
         </p>
-
         <p className={styles.disclosure}>
-          Paper trades execute against the latest delayed quote available in
-          development.
+          Paper trades execute against the latest delayed previous-close quote. This is not live
+          market data.
         </p>
 
         <section className={styles.priceList} aria-labelledby="stock-list-title">
@@ -370,16 +386,18 @@ export default function MarketPage() {
                 <span role="columnheader">Day change</span>
               </div>
               {sortedTickers.map((ticker) => {
-                const featuredQuote = featuredQuotes.find(
-                  ({ symbol }) => symbol === ticker.symbol,
-                );
+                const featuredQuote = featuredQuotes.find(({ symbol }) => symbol === ticker.symbol);
                 const isPositive = featuredQuote ? featuredQuote.day_change >= 0 : true;
+                const isSelected = quote?.symbol === ticker.symbol;
                 return (
                   <button
-                    className={styles.tableRow}
+                    aria-pressed={isSelected}
+                    className={isSelected ? `${styles.tableRow} ${styles.tableRowSelected}` : styles.tableRow}
                     key={ticker.symbol}
                     onClick={() => {
-                      void lookupSymbol(ticker.symbol);
+                      router.replace(`/market?symbol=${encodeURIComponent(ticker.symbol)}`, {
+                        scroll: false,
+                      });
                     }}
                     role="row"
                     type="button"
@@ -388,11 +406,11 @@ export default function MarketPage() {
                       <strong>{ticker.symbol}</strong>
                       <small>{ticker.name}</small>
                     </span>
-                    <span role="cell">
+                    <span className={styles.numeric} role="cell">
                       {featuredQuote ? currency(featuredQuote.price) : "Unavailable"}
                     </span>
                     <span
-                      className={isPositive ? styles.positiveChange : styles.negativeChange}
+                      className={`${styles.numeric} ${isPositive ? styles.positiveChange : styles.negativeChange}`}
                       role="cell"
                     >
                       {featuredQuote ? (
@@ -413,106 +431,130 @@ export default function MarketPage() {
         </section>
 
         {quote ? (
-          <section className={styles.tradePanel} aria-live="polite">
+          <section
+            className={styles.tradePanel}
+            aria-live="polite"
+            ref={tradePanelRef}
+            tabIndex={-1}
+          >
             <article className={styles.quoteCard}>
               <div>
                 <p className={styles.symbol}>{quote.symbol}</p>
                 <p className={styles.price}>{currency(quote.price)}</p>
               </div>
               <div className={styles.details}>
-                <p
-                  className={
-                    changeIsPositive ? styles.positiveChange : styles.negativeChange
-                  }
-                >
+                <p className={changeIsPositive ? styles.positiveChange : styles.negativeChange}>
                   {changeIsPositive ? "+" : ""}
                   {currency(quote.day_change)} ({changeIsPositive ? "+" : ""}
                   {quote.day_change_pct.toFixed(2)}%)
                 </p>
-                <p className={styles.meta}>
-                  Previous close ·{" "}
-                  {new Intl.DateTimeFormat("en-US", {
-                    dateStyle: "medium",
-                    timeZone: "UTC",
-                  }).format(new Date(quote.as_of))}
-                </p>
-                <p className={styles.meta}>{quote.source}</p>
+                <QuoteMeta hours={usCashHoursStatus()} quote={quote} />
               </div>
             </article>
 
             <aside className={styles.orderCard}>
               <p className={styles.eyebrow}>Paper trade</p>
-              <h2>{orderSide === "buy" ? "Buy" : "Sell"} {quote.symbol}</h2>
+              <h2>
+                {orderSide === "buy" ? "Buy" : "Sell"} {quote.symbol}
+              </h2>
               <p className={styles.orderSummary}>
                 {buyingPower ? `Buying power: ${buyingPower}` : "Buying power is loading."}
               </p>
-              <p className={styles.meta}>
-                Shares owned: {selectedPosition?.quantity ?? 0}
-              </p>
+              <p className={styles.meta}>Shares owned: {ownedShares}</p>
               {accountMessage ? <p className={styles.meta}>{accountMessage}</p> : null}
-              {isSignedIn ? (
+              {status === "signedIn" ? (
                 account ? (
-                  <form className={styles.orderForm} onSubmit={submitOrder}>
-                    <label htmlFor="order-side">Action</label>
-                    <select
-                      id="order-side"
-                      onChange={(event) => {
-                        setOrderSide(event.target.value as "buy" | "sell");
-                        setReceipt(null);
-                      }}
-                      value={orderSide}
-                    >
-                      <option value="buy">Buy</option>
-                      <option value="sell">Sell</option>
-                    </select>
-                    <label htmlFor="order-quantity">Shares</label>
-                    <input
-                      id="order-quantity"
-                      inputMode="numeric"
-                      min={1}
-                      onChange={(event) => {
-                        setOrderQuantity(event.target.value);
-                        setReceipt(null);
-                      }}
-                      step={1}
-                      type="number"
-                      value={orderQuantity}
-                    />
-                    {previewQuantity > 0 ? (
+                  isReviewing ? (
+                    <div>
                       <div className={styles.orderPreview}>
+                        <p>
+                          <span>Review</span>
+                          <strong>
+                            {orderSide === "buy" ? "Buy" : "Sell"} {previewQuantity} {quote.symbol}
+                          </strong>
+                        </p>
                         <p>
                           <span>Estimated {orderSide === "buy" ? "cost" : "proceeds"}</span>
                           <strong>{currencyFromCents(estimatedCostCents)}</strong>
                         </p>
                         <p>
-                          <span>{orderSide === "buy" ? "Cash after trade" : "Cash after sale"}</span>
-                          <strong className={exceedsBuyingPower ? styles.negativeChange : undefined}>
-                            {projectedCashCents !== null
-                              ? currencyFromCents(projectedCashCents)
-                              : "Unavailable"}
-                          </strong>
-                        </p>
-                        <p>
-                          <span>Shares after trade</span>
-                          <strong className={exceedsPosition ? styles.negativeChange : undefined}>
-                            {projectedShares ?? "Unavailable"}
-                          </strong>
+                          <span>Fill source</span>
+                          <strong>Delayed previous close</strong>
                         </p>
                       </div>
-                    ) : null}
-                    <button disabled={isSubmittingOrder} type="submit">
-                      {isSubmittingOrder
-                        ? "Placing trade..."
-                        : orderSide === "buy"
-                          ? "Buy stock"
-                          : "Sell stock"}
-                    </button>
-                  </form>
+                      <div className={styles.confirmActions}>
+                        <button disabled={isSubmittingOrder} onClick={() => void placeOrder()} type="button">
+                          {isSubmittingOrder ? "Placing trade..." : "Confirm paper trade"}
+                        </button>
+                        <button
+                          className={styles.secondary}
+                          disabled={isSubmittingOrder}
+                          onClick={() => setIsReviewing(false)}
+                          type="button"
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <form className={styles.orderForm} onSubmit={handleOrderSubmit}>
+                      <label htmlFor="order-side">Action</label>
+                      <select
+                        id="order-side"
+                        onChange={(event) => {
+                          setOrderSide(event.target.value as "buy" | "sell");
+                          setReceipt(null);
+                        }}
+                        value={orderSide}
+                      >
+                        <option value="buy">Buy</option>
+                        <option value="sell">Sell</option>
+                      </select>
+                      <label htmlFor="order-quantity">Shares</label>
+                      <input
+                        id="order-quantity"
+                        inputMode="numeric"
+                        min={1}
+                        onChange={(event) => {
+                          setOrderQuantity(event.target.value);
+                          setReceipt(null);
+                        }}
+                        step={1}
+                        type="number"
+                        value={orderQuantity}
+                      />
+                      {previewQuantity > 0 ? (
+                        <div className={styles.orderPreview}>
+                          <p>
+                            <span>Estimated {orderSide === "buy" ? "cost" : "proceeds"}</span>
+                            <strong>{currencyFromCents(estimatedCostCents)}</strong>
+                          </p>
+                          <p>
+                            <span>{orderSide === "buy" ? "Cash after trade" : "Cash after sale"}</span>
+                            <strong className={exceedsBuyingPower ? styles.negativeChange : undefined}>
+                              {projectedCashCents !== null
+                                ? currencyFromCents(projectedCashCents)
+                                : "Unavailable"}
+                            </strong>
+                          </p>
+                          <p>
+                            <span>Shares after trade</span>
+                            <strong className={exceedsPosition ? styles.negativeChange : undefined}>
+                              {remainingShares === null ? "Unavailable" : Math.max(0, remainingShares)}
+                            </strong>
+                          </p>
+                        </div>
+                      ) : null}
+                      <button disabled={!canSubmit} type="submit">
+                        {orderSide === "buy" ? "Review buy" : "Review sell"}
+                      </button>
+                    </form>
+                  )
                 ) : (
                   <p className={styles.meta}>Loading your paper account...</p>
                 )
               ) : (
-                <a className={styles.dashboardLink} href={`${apiURL}/api/v1/auth/google`}>
+                <a className={styles.dashboardLink} href={googleAuthURL("/market")}>
                   Sign in to buy
                 </a>
               )}
@@ -544,13 +586,16 @@ export default function MarketPage() {
                       </dd>
                     </div>
                   </dl>
+                  <Link className={styles.receiptLink} href="/history">
+                    View trade history
+                  </Link>
                 </article>
               ) : null}
             </aside>
           </section>
         ) : (
           <article className={styles.unavailable} aria-live="polite">
-            {isLoading
+            {isLoadingQuote
               ? "Loading quote..."
               : (message ?? "Select a stock to review the latest price and place a paper trade.")}
           </article>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { currencyFromCents } from "@/lib/market";
 import type { HoldingRow } from "@/lib/portfolio";
 import styles from "./HoldingsTable.module.css";
@@ -37,7 +38,9 @@ export default function HoldingsTable({ rows }: HoldingsTableProps) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.symbol}>
-              <th scope="row">{row.symbol}</th>
+              <th scope="row">
+                <Link href={`/market?symbol=${encodeURIComponent(row.symbol)}`}>{row.symbol}</Link>
+              </th>
               <td>{row.quantity}</td>
               <td>{currencyFromCents(row.avgCostCents)}</td>
               <td>{row.priceCents !== null ? currencyFromCents(row.priceCents) : "Unavailable"}</td>

@@ -1,7 +1,9 @@
 import Link from "next/link";
+import AuthBanner from "./auth-banner";
 import styles from "./page.module.css";
 import SessionAction from "./session-action";
 import { currency, getQuote } from "@/lib/market";
+import { quoteMetaLabel } from "@/lib/quote-meta";
 
 export default async function Home() {
   const quote = await getQuote("AAPL");
@@ -18,6 +20,7 @@ export default async function Home() {
           signedOutLabel="Sign in with Google"
         />
       </nav>
+      <AuthBanner />
 
       <section className={styles.hero}>
         <p className={styles.eyebrow}>Paper trading, built for practice</p>
@@ -54,13 +57,7 @@ export default async function Home() {
               {currency(quote.day_change)} ({changeIsPositive ? "+" : ""}
               {quote.day_change_pct.toFixed(2)}%)
             </p>
-            <p className={styles.quoteMeta}>
-              {quote.source} data from{" "}
-              {new Intl.DateTimeFormat("en-US", {
-                dateStyle: "medium",
-                timeZone: "UTC",
-              }).format(new Date(quote.as_of))}
-            </p>
+            <p className={styles.quoteMeta}>{quoteMetaLabel(quote)}</p>
           </article>
         ) : (
           <article className={styles.quoteCard}>

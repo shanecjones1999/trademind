@@ -1,0 +1,84 @@
+.intro {
+  padding: 28px 0 36px;
+}
+
+.intro h1 {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 12px 0 14px;
+}
+
+.description {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.5;
+  max-width: 560px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 28px;
+}
+
+.card h2 {
+  font-size: 1.35rem;
+  letter-spacing: -0.04em;
+  margin-bottom: 18px;
+}
+
+.pagination {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.pageStatus {
+  color: var(--subtle);
+  font-size: 0.85rem;
+}
+
+.pageActions {
+  display: flex;
+  gap: 10px;
+}
+
+.pageButton,
+.pageButtonDisabled {
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 10px 16px;
+}
+
+.pageButton {
+  background: var(--ink);
+  color: var(--ink-inverse);
+}
+
+.pageButton:hover {
+  background: var(--accent);
+}
+
+.pageButtonDisabled {
+  background: var(--line);
+  color: var(--faint);
+}
+
+@media (max-width: 700px) {
+  .pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,163 @@
+.intro {
+  padding: 28px 0 36px;
+}
+
+.intro h1 {
+  font-size: clamp(2.2rem, 5vw, 3.6rem);
+  letter-spacing: -0.055em;
+  line-height: 1;
+  margin: 12px 0 14px;
+}
+
+.description {
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.55;
+  max-width: 560px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.balanceGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.primaryBalance,
+.balanceCard,
+.holdingsCard,
+.nextStep {
+  border-radius: var(--radius);
+  padding: 28px;
+}
+
+.primaryBalance {
+  background: var(--ink);
+  color: var(--ink-inverse);
+}
+
+.primaryBalance p,
+.balanceCard p {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.primaryBalance strong,
+.balanceCard strong {
+  display: block;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.06em;
+  line-height: 1;
+  margin: 28px 0 9px;
+}
+
+.primaryBalance span {
+  color: #aac1b4;
+  font-size: 0.83rem;
+}
+
+.balanceCard {
+  background: var(--card-strong);
+}
+
+.balanceCard span {
+  color: var(--subtle);
+  font-size: 0.83rem;
+}
+
+.positiveChange {
+  color: var(--gain);
+}
+
+.negativeChange {
+  color: var(--loss);
+}
+
+.workspace {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.holdingsCard {
+  background: var(--card);
+}
+
+.cardHeading {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.holdingsCard h2,
+.nextStep h2 {
+  font-size: 1.45rem;
+  letter-spacing: -0.04em;
+  margin-top: 10px;
+}
+
+.textLink {
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.textLink:hover {
+  color: var(--ink);
+}
+
+.freshness {
+  margin: 0 0 16px;
+}
+
+.nextStep {
+  background: var(--card-strong);
+}
+
+.nextStep p:not(.eyebrow) {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 12px;
+  max-width: 520px;
+}
+
+.primaryAction {
+  background: var(--ink);
+  border-radius: 999px;
+  color: var(--ink-inverse);
+  display: inline-block;
+  font-weight: 700;
+  margin-top: 28px;
+  padding: 14px 22px;
+}
+
+.primaryAction:hover {
+  background: var(--accent);
+}
+
+@media (max-width: 1100px) {
+  .balanceGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .balanceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .primaryBalance strong,
+  .balanceCard strong {
+    margin-top: 22px;
+  }
+}

@@ -1,25 +1,9 @@
-.page {
-  background: #fffdf8;
-  min-height: 100vh;
-  padding: 24px 32px;
-}
-
-.dashboardLink {
-  border: 1px solid #c8d7ce;
-  border-radius: 999px;
-  color: #12251f;
-  font-size: 0.9rem;
-  font-weight: 650;
-  padding: 10px 16px;
-}
-
 .content {
-  margin: 130px auto 0;
-  max-width: 960px;
+  padding: 28px 0 0;
 }
 
 .eyebrow {
-  color: #37775d;
+  color: var(--accent);
   font-size: 0.8rem;
   font-weight: 750;
   letter-spacing: 0.09em;
@@ -27,32 +11,31 @@
 }
 
 .content h1 {
-  color: #12251f;
-  font-size: clamp(2.4rem, 6vw, 4.5rem);
-  letter-spacing: -0.065em;
+  font-size: clamp(2.2rem, 5vw, 3.6rem);
+  letter-spacing: -0.055em;
   line-height: 0.98;
   margin: 14px 0 18px;
 }
 
 .description {
-  color: #52635b;
-  font-size: 1.1rem;
+  color: var(--muted);
+  font-size: 1.08rem;
   line-height: 1.55;
   max-width: 560px;
 }
 
 .disclosure {
-  color: #5d7468;
+  color: var(--subtle);
   font-size: 0.82rem;
   line-height: 1.45;
   margin-top: 18px;
-  max-width: 500px;
+  max-width: 520px;
 }
 
 .priceList {
-  background: #f1f5f1;
+  background: var(--card);
   border-radius: 22px;
-  margin-top: 48px;
+  margin-top: 40px;
   max-width: 760px;
   padding: 28px 30px;
 }
@@ -64,7 +47,6 @@
 }
 
 .listHeading h2 {
-  color: #12251f;
   font-size: 1.4rem;
   letter-spacing: -0.04em;
   margin: 8px 0 0;
@@ -73,7 +55,7 @@
 .listHeading > span,
 .tableHeader,
 .listStatus {
-  color: #5d7468;
+  color: var(--subtle);
   font-size: 0.8rem;
 }
 
@@ -98,7 +80,7 @@
 
 .tickerSearch label,
 .tickerSortControl label {
-  color: #52635b;
+  color: var(--muted);
   display: block;
   font-size: 0.84rem;
   font-weight: 700;
@@ -106,11 +88,13 @@
 }
 
 .tickerSearch input,
-.tickerSortControl select {
-  background: #fffdf8;
-  border: 1px solid #b7cbbd;
+.tickerSortControl select,
+.orderForm input,
+.orderForm select {
+  background: var(--bg);
+  border: 1px solid var(--input-border);
   border-radius: 10px;
-  color: #12251f;
+  color: var(--ink);
   font: inherit;
   padding: 11px 13px;
   width: 100%;
@@ -124,7 +108,7 @@
 }
 
 .tableHeader {
-  border-bottom: 1px solid #d4e1d7;
+  border-bottom: 1px solid var(--line);
   font-weight: 700;
   padding: 0 0 10px;
 }
@@ -135,23 +119,26 @@
 }
 
 .tableRow {
-  border-bottom: 1px solid #dbe7de;
-  border-left: 0;
-  border-right: 0;
-  border-top: 0;
   background: transparent;
-  color: #12251f;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
   cursor: pointer;
   font: inherit;
   font-size: 0.92rem;
-  padding: 15px 0;
+  padding: 15px 8px;
   text-align: left;
   width: 100%;
 }
 
+.tableRow:hover,
+.tableRowSelected {
+  background: var(--card-strong);
+}
+
 .tableRow:last-child {
   border-bottom: 0;
-  padding-bottom: 0;
 }
 
 .tableRow strong,
@@ -160,53 +147,54 @@
 }
 
 .tableRow strong {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   letter-spacing: 0.04em;
 }
 
 .tableRow small {
-  color: #5d7468;
+  color: var(--subtle);
   font-size: 0.78rem;
   margin-top: 3px;
+}
+
+.numeric {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .listStatus {
   margin: 28px 0 0;
 }
 
-.quoteCard {
-  align-items: end;
-  background: #e6f1e9;
-  border-radius: 22px;
-  display: flex;
-  justify-content: space-between;
-  margin-top: 48px;
-  max-width: 680px;
-  padding: 30px;
-}
-
 .tradePanel {
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
-  margin-top: 48px;
+  margin-top: 40px;
   max-width: 960px;
 }
 
-.tradePanel .quoteCard {
-  margin-top: 0;
-  max-width: none;
+.quoteCard {
+  align-items: end;
+  background: var(--card-strong);
+  border-radius: 22px;
+  display: flex;
+  justify-content: space-between;
+  padding: 30px;
 }
 
 .symbol {
-  color: #37775d;
+  color: var(--accent);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 0.88rem;
   font-weight: 750;
   letter-spacing: 0.08em;
 }
 
 .price {
-  color: #12251f;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 2.5rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 750;
   letter-spacing: -0.06em;
   margin-top: 8px;
@@ -217,20 +205,18 @@
 }
 
 .orderCard {
-  background: #f1f5f1;
+  background: var(--card);
   border-radius: 22px;
   padding: 30px;
 }
 
 .orderCard h2 {
-  color: #12251f;
   font-size: 1.5rem;
   letter-spacing: -0.04em;
   margin: 10px 0 0;
 }
 
 .orderSummary {
-  color: #12251f;
   font-size: 1rem;
   font-weight: 700;
   margin-top: 18px;
@@ -243,34 +229,17 @@
 }
 
 .orderForm label {
-  color: #52635b;
+  color: var(--muted);
   font-size: 0.84rem;
   font-weight: 700;
 }
 
-.orderForm input {
-  background: #fffdf8;
-  border: 1px solid #b7cbbd;
-  border-radius: 10px;
-  color: #12251f;
-  font: inherit;
-  padding: 11px 13px;
-}
-
-.orderForm select {
-  background: #fffdf8;
-  border: 1px solid #b7cbbd;
-  border-radius: 10px;
-  color: #12251f;
-  font: inherit;
-  padding: 11px 13px;
-}
-
-.orderForm button {
-  background: #12251f;
+.orderForm button,
+.confirmActions button {
+  background: var(--ink);
   border: 0;
   border-radius: 999px;
-  color: #fffdf8;
+  color: var(--ink-inverse);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -278,14 +247,37 @@
   padding: 13px 18px;
 }
 
-.orderForm button:disabled {
-  background: #75867d;
-  cursor: progress;
+.orderForm button:hover:not(:disabled),
+.confirmActions button:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.orderForm button:disabled,
+.confirmActions button:disabled {
+  background: var(--faint);
+  cursor: not-allowed;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.confirmActions .secondary {
+  background: transparent;
+  border: 1px solid var(--input-border);
+  color: var(--ink);
+}
+
+.confirmActions .secondary:hover {
+  background: var(--card-strong);
+  border-color: var(--ink);
 }
 
 .orderPreview {
-  background: #fffdf8;
-  border: 1px solid #dce7df;
+  background: var(--bg);
+  border: 1px solid var(--line);
   border-radius: 12px;
   display: grid;
   gap: 6px;
@@ -299,45 +291,43 @@
 }
 
 .orderPreview span {
-  color: #5d7468;
+  color: var(--subtle);
   font-size: 0.82rem;
 }
 
 .orderPreview strong {
-  color: #12251f;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.positiveChange,
-.negativeChange {
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
 .positiveChange {
-  color: #17734c;
+  color: var(--gain);
+  font-weight: 700;
 }
 
 .negativeChange {
-  color: #bd3745;
+  color: var(--loss);
+  font-weight: 700;
 }
 
 .meta,
 .unavailable {
-  color: #5d7468;
+  color: var(--subtle);
   font-size: 0.82rem;
   margin-top: 8px;
 }
 
 .orderError {
-  color: #a42b36;
+  color: var(--danger);
   font-size: 0.84rem;
   line-height: 1.45;
   margin-top: 16px;
 }
 
 .receipt {
-  background: #fffdf8;
+  background: var(--bg);
   border: 1px solid #b7d9c3;
   border-radius: 14px;
   margin-top: 16px;
@@ -345,7 +335,6 @@
 }
 
 .receiptTitle {
-  color: #12251f;
   font-size: 0.92rem;
   font-weight: 750;
 }
@@ -362,33 +351,52 @@
 }
 
 .receipt dt {
-  color: #5d7468;
+  color: var(--subtle);
   font-size: 0.8rem;
 }
 
 .receipt dd {
-  color: #12251f;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
 
+.receiptLink {
+  color: var(--accent);
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-top: 12px;
+}
+
+.receiptLink:hover {
+  color: var(--ink);
+}
+
+.dashboardLink {
+  border: 1px solid var(--input-border);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 650;
+  margin-top: 16px;
+  padding: 10px 16px;
+}
+
+.dashboardLink:hover {
+  border-color: var(--ink);
+}
+
 .unavailable {
-  background: #f1f5f1;
+  background: var(--card);
   border-radius: 22px;
-  margin-top: 48px;
+  margin-top: 40px;
   max-width: 680px;
   padding: 30px;
 }
 
 @media (max-width: 700px) {
-  .page {
-    padding: 20px;
-  }
-
-  .content {
-    margin-top: 88px;
-  }
-
   .tickerControls {
     flex-direction: column;
   }
@@ -411,17 +419,8 @@
     padding: 24px 20px;
   }
 
-  .listHeading > span {
-    display: none;
-  }
-
   .tableHeader,
   .tableRow {
-    grid-template-columns: minmax(100px, 1fr) auto;
-  }
-
-  .tableHeader span:last-child,
-  .tableRow > span:last-child {
-    display: none;
+    grid-template-columns: minmax(100px, 1fr) minmax(80px, auto) minmax(90px, auto);
   }
 }

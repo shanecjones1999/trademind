@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/shanecjones1999/trademind/internal/identity"
@@ -35,6 +37,17 @@ func (s *Server) googleAuthStart(writer http.ResponseWriter, request *http.Reque
 		Secure:   s.googleAuth.SecureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
+	if next := sanitizeNextPath(request.URL.Query().Get("next")); next != "" {
+		http.SetCookie(writer, &http.Cookie{
+			Name:     nextCookieName,
+			Value:    next,
+			Path:     googleAuthStartPath,
+			MaxAge:   int((10 * time.Minute).Seconds()),
+			HttpOnly: true,
+			Secure:   s.googleAuth.SecureCookies,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 	http.Redirect(writer, request, s.googleAuth.Authenticator.AuthorizationURL(state, nonce), http.StatusFound)
 }
 
@@ -49,37 +62,39 @@ func (s *Server) googleAuthCallback(writer http.ResponseWriter, request *http.Re
 
 	stateCookie, err := request.Cookie(stateCookieName)
 	if err != nil {
-		writeError(writer, http.StatusBadRequest, "authentication state is missing")
+		s.redirectAuthFailure(writer, request)
 		return
 	}
 	deleteStateCookie(writer, s.googleAuth.SecureCookies)
+	next := readNextPath(request)
+	deleteNextCookie(writer, s.googleAuth.SecureCookies)
 
 	nonce, err := s.googleAuth.Sessions.VerifyOAuthState(stateCookie.Value, request.URL.Query().Get("state"))
 	if err != nil {
-		writeError(writer, http.StatusBadRequest, "authentication state is invalid or expired")
+		s.redirectAuthFailure(writer, request)
 		return
 	}
 
 	if providerError := request.URL.Query().Get("error"); providerError != "" {
-		writeError(writer, http.StatusUnauthorized, "Google authentication was not completed")
+		s.redirectAuthFailure(writer, request)
 		return
 	}
 	code := request.URL.Query().Get("code")
 	if code == "" {
-		writeError(writer, http.StatusBadRequest, "authorization code is missing")
+		s.redirectAuthFailure(writer, request)
 		return
 	}
 
 	profile, err := s.googleAuth.Authenticator.Authenticate(request.Context(), code, nonce)
 	if err != nil {
 		s.logger.Error("complete Google authentication", "error", err)
-		writeError(writer, http.StatusUnauthorized, "Google authentication failed")
+		s.redirectAuthFailure(writer, request)
 		return
 	}
 	if s.googleAuth.Accounts != nil {
 		if _, err := s.googleAuth.Accounts.EnsureAccount(request.Context(), profile.Subject); err != nil {
 			s.logger.Error("provision paper account", "error", err)
-			writeError(writer, http.StatusServiceUnavailable, "unable to prepare paper account")
+			s.redirectAuthFailure(writer, request)
 			return
 		}
 	}
@@ -87,7 +102,7 @@ func (s *Server) googleAuthCallback(writer http.ResponseWriter, request *http.Re
 	sessionToken, session, err := s.googleAuth.Sessions.CreateSession(profile)
 	if err != nil {
 		s.logger.Error("create authenticated session", "error", err)
-		writeError(writer, http.StatusInternalServerError, "unable to create session")
+		s.redirectAuthFailure(writer, request)
 		return
 	}
 
@@ -100,7 +115,7 @@ func (s *Server) googleAuthCallback(writer http.ResponseWriter, request *http.Re
 		Secure:   s.googleAuth.SecureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(writer, request, s.googleAuth.SuccessRedirect, http.StatusFound)
+	http.Redirect(writer, request, s.successLocation(next), http.StatusFound)
 }
 
 func (s *Server) me(writer http.ResponseWriter, request *http.Request) {
@@ -203,6 +218,96 @@ func deleteStateCookie(writer http.ResponseWriter, secure bool) {
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+func deleteNextCookie(writer http.ResponseWriter, secure bool) {
+	http.SetCookie(writer, &http.Cookie{
+		Name:     nextCookieName,
+		Value:    "",
+		Path:     googleAuthStartPath,
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func readNextPath(request *http.Request) string {
+	cookie, err := request.Cookie(nextCookieName)
+	if err != nil {
+		return ""
+	}
+	return sanitizeNextPath(cookie.Value)
+}
+
+func sanitizeNextPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || parsed.Scheme != "" || parsed.User != nil {
+		return ""
+	}
+	path := parsed.EscapedPath()
+	if path == "/markets" {
+		path = "/market"
+	}
+	switch path {
+	case "/", "/dashboard", "/market", "/portfolio", "/history":
+	default:
+		return ""
+	}
+	parsed.Path = path
+	parsed.Fragment = ""
+	result := parsed.String()
+	if !strings.HasPrefix(result, "/") || strings.HasPrefix(result, "//") {
+		return ""
+	}
+	return result
+}
+
+func (s *Server) redirectAuthFailure(writer http.ResponseWriter, request *http.Request) {
+	location := s.authFailureLocation()
+	if location == "" {
+		writeError(writer, http.StatusUnauthorized, "authentication failed")
+		return
+	}
+	http.Redirect(writer, request, location, http.StatusFound)
+}
+
+func (s *Server) authFailureLocation() string {
+	return s.webOriginLocation("/", url.Values{"auth": {"error"}})
+}
+
+func (s *Server) successLocation(next string) string {
+	if next == "" {
+		return s.googleAuth.SuccessRedirect
+	}
+	parsed, err := url.Parse(next)
+	if err != nil {
+		return s.googleAuth.SuccessRedirect
+	}
+	query, _ := url.ParseQuery(parsed.RawQuery)
+	location := s.webOriginLocation(parsed.Path, query)
+	if location == "" {
+		return s.googleAuth.SuccessRedirect
+	}
+	return location
+}
+
+func (s *Server) webOriginLocation(path string, query url.Values) string {
+	if s.googleAuth == nil || strings.TrimSpace(s.googleAuth.SuccessRedirect) == "" {
+		return ""
+	}
+	parsed, err := url.Parse(s.googleAuth.SuccessRedirect)
+	if err != nil {
+		return ""
+	}
+	parsed.Path = path
+	parsed.RawQuery = query.Encode()
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func (s *Server) loadAccountSnapshot(ctx context.Context, userID string) (paper.AccountSnapshot, error) {

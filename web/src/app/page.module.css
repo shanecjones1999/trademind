@@ -12,19 +12,43 @@
 }
 
 .brand {
-  color: #12251f;
+  color: var(--ink);
   font-size: 1.2rem;
   font-weight: 800;
   letter-spacing: -0.04em;
 }
 
+.brand:hover {
+  color: var(--accent);
+}
+
+.authBanner {
+  background: #f8eee7;
+  border-radius: 14px;
+  margin-top: 20px;
+  padding: 14px 16px;
+}
+
+.authBanner a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.authBanner a:hover {
+  color: var(--ink);
+}
+
 .signIn {
-  border: 1px solid #c8d7ce;
+  border: 1px solid var(--input-border);
   border-radius: 999px;
-  color: #12251f;
+  color: var(--ink);
   font-size: 0.9rem;
   font-weight: 650;
   padding: 10px 16px;
+}
+
+.signIn:hover {
+  border-color: var(--ink);
 }
 
 .hero {
@@ -56,13 +80,17 @@
 }
 
 .primaryAction {
-  background: #12251f;
+  background: var(--ink);
   border-radius: 999px;
-  color: #fffdf8;
+  color: var(--ink-inverse);
   display: inline-block;
   font-weight: 700;
   margin-top: 32px;
   padding: 14px 22px;
+}
+
+.primaryAction:hover {
+  background: var(--accent);
 }
 
 .quoteSection {

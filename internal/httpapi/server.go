@@ -25,6 +25,7 @@ const (
 	ordersPath             = "/api/v1/orders"
 	sessionCookieName      = "trademind_session"
 	stateCookieName        = "trademind_oauth_state"
+	nextCookieName         = "trademind_auth_next"
 	maxJSONRequestBytes    = 4 << 10
 )
 
@@ -165,7 +166,7 @@ func (s *Server) quoteList(writer http.ResponseWriter, request *http.Request) {
 			s.writeQuoteError(writer, err)
 			return
 		}
-		writeJSON(writer, http.StatusOK, quotes)
+		writeJSON(writer, http.StatusOK, quotesInRequestedOrder(symbols, quotes))
 		return
 	}
 
@@ -180,6 +181,20 @@ func (s *Server) quoteList(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	writeJSON(writer, http.StatusOK, quotes)
+}
+
+func quotesInRequestedOrder(symbols []string, quotes []market.Quote) []market.Quote {
+	bySymbol := make(map[string]market.Quote, len(quotes))
+	for _, quote := range quotes {
+		bySymbol[quote.Symbol] = quote
+	}
+	ordered := make([]market.Quote, 0, len(symbols))
+	for _, symbol := range symbols {
+		if quote, ok := bySymbol[symbol]; ok {
+			ordered = append(ordered, quote)
+		}
+	}
+	return ordered
 }
 
 func (s *Server) quote(writer http.ResponseWriter, request *http.Request) {
@@ -252,7 +267,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 				writer.Header().Set("Access-Control-Allow-Origin", origin)
 				writer.Header().Set("Vary", "Origin")
 				writer.Header().Set("Access-Control-Allow-Methods", http.MethodGet+", "+http.MethodPost+", "+http.MethodOptions)
-				writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
 				writer.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 		}

@@ -110,6 +110,43 @@ func TestQuoteListReturnsNormalizedUniqueSymbolsInRequestOrder(t *testing.T) {
 	}
 }
 
+type orderedBatchQuotes struct {
+	quotes []market.Quote
+}
+
+func (o orderedBatchQuotes) Quote(_ context.Context, symbol string) (market.Quote, error) {
+	for _, quote := range o.quotes {
+		if quote.Symbol == symbol {
+			return quote, nil
+		}
+	}
+	return market.Quote{}, market.ErrSymbolNotFound
+}
+
+func (o orderedBatchQuotes) Quotes(_ context.Context, _ []string) ([]market.Quote, error) {
+	return o.quotes, nil
+}
+
+func TestQuoteListReordersBatchResultsAndOmitsMissingSymbols(t *testing.T) {
+	server := NewServer(orderedBatchQuotes{quotes: []market.Quote{
+		{Symbol: "MSFT", Price: 420.18},
+		{Symbol: "AAPL", Price: 191.30},
+	}}, nil, slog.Default())
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/quotes?symbols=AAPL,NVDA,MSFT", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var quotes []market.Quote
+	if err := json.NewDecoder(response.Body).Decode(&quotes); err != nil {
+		t.Fatalf("decode quote list: %v", err)
+	}
+	if len(quotes) != 2 || quotes[0].Symbol != "AAPL" || quotes[1].Symbol != "MSFT" {
+		t.Fatalf("quotes = %#v, want AAPL then MSFT without NVDA", quotes)
+	}
+}
+
 func TestQuoteListRejectsMissingOrInvalidSymbols(t *testing.T) {
 	for _, target := range []string{
 		"/api/v1/quotes",
